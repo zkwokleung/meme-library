@@ -264,27 +264,30 @@ class _LibraryBody extends ConsumerWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: SearchBar(
-                controller: searchController,
-                hintText: 'Search',
-                elevation: const WidgetStatePropertyAll(0),
-                leading: const Icon(Icons.search_rounded),
-                trailing: [
-                  if (state.searchText.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Clear search',
-                      onPressed: () {
-                        searchController.clear();
-                        ref
-                            .read(libraryControllerProvider.notifier)
-                            .setSearchText('');
-                      },
-                    ),
-                ],
-                onChanged: (text) => ref
-                    .read(libraryControllerProvider.notifier)
-                    .setSearchText(text),
+              child: Semantics(
+                label: 'Search',
+                child: SearchBar(
+                  controller: searchController,
+                  hintText: 'Search',
+                  elevation: const WidgetStatePropertyAll(0),
+                  leading: const Icon(Icons.search_rounded),
+                  trailing: [
+                    if (state.searchText.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          searchController.clear();
+                          ref
+                              .read(libraryControllerProvider.notifier)
+                              .setSearchText('');
+                        },
+                      ),
+                  ],
+                  onChanged: (text) => ref
+                      .read(libraryControllerProvider.notifier)
+                      .setSearchText(text),
+                ),
               ),
             ),
           ),
