@@ -66,6 +66,12 @@ abstract interface class LibraryRepository {
   /// Removes a tag from every meme and deletes it.
   Future<void> deleteTag(String id);
 
+  /// Replaces every meme, tag, and search row in one transaction.
+  ///
+  /// Used by restore: the incoming [memes] carry their tags. On failure
+  /// the previous contents are untouched.
+  Future<void> replaceAll(List<Meme> memes);
+
   /// Removes files without records and records without files.
   Future<ReconcileReport> reconcile();
 
@@ -337,6 +343,57 @@ class DriftLibraryRepository implements LibraryRepository {
       for (final memeId in affected) {
         final meme = await memeById(memeId);
         if (meme != null) await _writeFtsRow(meme);
+      }
+    });
+  }
+
+  @override
+  Future<void> replaceAll(List<Meme> memes) {
+    return _db.transaction(() async {
+      await _db.delete(_db.memeTags).go();
+      await _db.delete(_db.memes).go();
+      await _db.delete(_db.tags).go();
+      await _db.customStatement('DELETE FROM ${AppDatabase.ftsTable}');
+
+      final insertedTags = <String>{};
+      for (final meme in memes) {
+        await _db
+            .into(_db.memes)
+            .insert(
+              MemesCompanion.insert(
+                id: meme.id,
+                sha256: meme.sha256,
+                mimeType: meme.mimeType,
+                width: meme.width,
+                height: meme.height,
+                sizeBytes: meme.sizeBytes,
+                relativePath: meme.relativePath,
+                thumbnailPath: meme.thumbnailPath,
+                sourceKind: meme.sourceKind.name,
+                sourceRef: Value(meme.sourceRef),
+                title: Value(meme.title),
+                notes: Value(meme.notes),
+                createdAt: meme.createdAt.toUtc().millisecondsSinceEpoch,
+                updatedAt: meme.updatedAt.toUtc().millisecondsSinceEpoch,
+              ),
+            );
+        for (final tag in meme.tags) {
+          if (insertedTags.add(tag.id)) {
+            await _db
+                .into(_db.tags)
+                .insert(
+                  TagsCompanion.insert(
+                    id: tag.id,
+                    name: tag.name,
+                    normalizedName: tag.normalized,
+                  ),
+                );
+          }
+          await _db
+              .into(_db.memeTags)
+              .insert(MemeTagsCompanion.insert(memeId: meme.id, tagId: tag.id));
+        }
+        await _writeFtsRow(meme);
       }
     });
   }

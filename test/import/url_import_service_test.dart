@@ -99,10 +99,16 @@ void main() {
   });
 
   test('declared oversized responses are rejected before download', () async {
-    serve((request) {
+    serve((request) async {
+      // Send only the headers; closing with a short body would abort the
+      // connection on Linux before the client sees the content-length.
       request.response.headers.contentLength = 1024 * 1024;
+      request.response.bufferOutput = false;
       request.response.add(List.filled(64, 0));
-      request.response.close();
+      try {
+        await request.response.flush();
+      } catch (_) {}
+      // Never close; tearDown force-closes the server.
     });
 
     final failure =

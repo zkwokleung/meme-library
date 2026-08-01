@@ -1,76 +1,50 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
-void main() {
-  runApp(const ProviderScope(child: MemeLibraryApp()));
-}
+import 'src/app/app.dart';
+import 'src/app/providers.dart';
+import 'src/data/database/app_database.dart';
+import 'src/data/library_repository.dart';
+import 'src/data/media_store.dart';
+import 'src/services/platform/channel_platform_services.dart';
+import 'src/services/platform/share_plus_service.dart';
+import 'src/services/providers.dart';
 
-class MemeLibraryApp extends StatelessWidget {
-  const MemeLibraryApp({super.key});
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  @override
-  Widget build(BuildContext context) {
-    const seedColor = Color(0xFF6246EA);
+  final documents = await getApplicationDocumentsDirectory();
+  final dataDir = Directory(p.join(documents.path, 'meme_library'));
+  await dataDir.create(recursive: true);
 
-    return MaterialApp(
-      title: 'Meme Library',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
-        scaffoldBackgroundColor: const Color(0xFFF8F7FC),
-        useMaterial3: true,
-      ),
-      home: const LibraryScreen(),
-    );
-  }
-}
+  final database = AppDatabase.file(dataDir);
+  final mediaStore = MediaStore(Directory(p.join(dataDir.path, 'media')));
+  await mediaStore.init();
+  await mediaStore.clearStaging();
+  final repository = DriftLibraryRepository(database, mediaStore);
 
-class LibraryScreen extends StatelessWidget {
-  const LibraryScreen({super.key});
+  final temp = await getTemporaryDirectory();
+  final backupWorkDir = Directory(p.join(temp.path, 'meme_library_backup'));
 
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('Meme Library'),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.collections_bookmark_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 72,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Your meme stash starts here',
-                    style: textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Save memes from your clipboard, another app, or a link.',
-                    style: textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
+  runApp(
+    ProviderScope(
+      overrides: [
+        backupWorkDirectoryProvider.overrideWithValue(backupWorkDir),
+        mediaStoreProvider.overrideWithValue(mediaStore),
+        libraryRepositoryProvider.overrideWithValue(repository),
+        clipboardServiceProvider.overrideWithValue(
+          const ChannelClipboardService(),
         ),
-      ),
-    );
-  }
+        shareServiceProvider.overrideWithValue(const SharePlusShareService()),
+        incomingShareServiceProvider.overrideWithValue(
+          ChannelIncomingShareService(),
+        ),
+      ],
+      child: const MemeLibraryApp(),
+    ),
+  );
 }

@@ -24,7 +24,7 @@ class _FakeShareService implements ShareService {
   final sharedPaths = <String>[];
 
   @override
-  Future<void> shareImageFile(String absolutePath, {String? mimeType}) async {
+  Future<void> shareFile(String absolutePath, {String? mimeType}) async {
     sharedPaths.add(absolutePath);
   }
 }
@@ -72,7 +72,7 @@ void main() {
     final read = await container.read(clipboardServiceProvider).readImage();
     expect(read, same(image));
 
-    await container.read(shareServiceProvider).shareImageFile('/tmp/a.png');
+    await container.read(shareServiceProvider).shareFile('/tmp/a.png');
     expect(share.sharedPaths, ['/tmp/a.png']);
 
     final initial = await container
