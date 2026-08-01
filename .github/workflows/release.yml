@@ -11,6 +11,9 @@ jobs:
   android:
     name: Android release artifacts
     runs-on: ubuntu-latest
+    env:
+      # `secrets` is not usable in step `if` expressions; bridge via env.
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -27,7 +30,7 @@ jobs:
       # a properly signed build. Without them the artifacts are debug-signed
       # (installable, but not store-uploadable).
       - name: Configure signing
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

@@ -7,7 +7,7 @@ created from the command line).
 The Flutter app side is already implemented: on launch and on every
 foreground activation it drains `inbox/` inside the App Group container
 and imports whatever the extension staged there
-(`ios/Runner/PlatformChannels.swift`).
+(`ios/Runner/AppDelegate.swift`).
 
 ## One-time setup in Xcode
 
