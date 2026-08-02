@@ -52,28 +52,74 @@ void main() {
     expect(() => small.validate(pngBytes()), rejects(ImageRejection.tooLarge));
   });
 
-  test('rejects GIF and unknown formats', () {
+  test('accepts an animated GIF and reports frame metadata', () {
+    final result = validator.validate(
+      animatedGifBytes(frames: 4, width: 16, height: 12),
+    );
+    expect(result.mimeType, 'image/gif');
+    expect(result.fileExtension, 'gif');
+    expect(result.isAnimated, isTrue);
+    expect(result.frameCount, 4);
+    expect(result.width, 16);
+    expect(result.height, 12);
+  });
+
+  test('accepts a static GIF', () {
+    final result = validator.validate(staticGifBytes());
+    expect(result.mimeType, 'image/gif');
+    expect(result.isAnimated, isFalse);
+    expect(result.frameCount, 1);
+  });
+
+  test('accepts an APNG', () {
+    final result = validator.validate(animatedPngBytes(frames: 3));
+    expect(result.mimeType, 'image/png');
+    expect(result.isAnimated, isTrue);
+    expect(result.frameCount, 3);
+  });
+
+  test('acTL chunk with a single declared frame stays static', () {
+    final result = validator.validate(apngBytes());
+    expect(result.isAnimated, isFalse);
+  });
+
+  test('rejects unknown formats', () {
+    expect(
+      () => validator.validate(unknownFormatBytes()),
+      rejects(ImageRejection.unsupportedFormat),
+    );
+  });
+
+  test('garbage with a GIF signature fails as corrupt', () {
     expect(
       () => validator.validate(gifBytes()),
-      rejects(ImageRejection.unsupportedFormat),
-    );
-    expect(
-      () => validator.validate(Uint8List.fromList(List.filled(64, 42))),
-      rejects(ImageRejection.unsupportedFormat),
+      rejects(ImageRejection.corrupt),
     );
   });
 
-  test('rejects animated WebP', () {
+  test('animated WebP header reaches the decode stage', () {
+    // The fixture is a hand-built header, not a decodable file; reaching
+    // `corrupt` (instead of unsupported/animated) proves the accept
+    // branch is taken.
     expect(
       () => validator.validate(animatedWebpBytes()),
-      rejects(ImageRejection.animated),
+      rejects(ImageRejection.corrupt),
     );
   });
 
-  test('rejects APNG', () {
+  test('rejects animations above the total-frame-pixel limit', () {
+    const tiny = ImageValidator(maxTotalFramePixels: 500);
     expect(
-      () => validator.validate(apngBytes()),
-      rejects(ImageRejection.animated),
+      () => tiny.validate(animatedGifBytes(frames: 4, width: 16, height: 16)),
+      rejects(ImageRejection.tooManyPixels),
+    );
+  });
+
+  test('rejects animations above the frame-count limit', () {
+    const tiny = ImageValidator(maxFrames: 2);
+    expect(
+      () => tiny.validate(animatedGifBytes(frames: 4)),
+      rejects(ImageRejection.tooManyPixels),
     );
   });
 

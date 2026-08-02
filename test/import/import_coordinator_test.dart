@@ -79,34 +79,48 @@ void main() {
       ImportFailureReason.emptySource,
     );
     expect(
-      (await importOf(gifBytes())).reason,
+      (await importOf(unknownFormatBytes())).reason,
       ImportFailureReason.unsupportedFormat,
     );
+    expect((await importOf(gifBytes())).reason, ImportFailureReason.corrupt);
     expect(
       (await importOf(animatedWebpBytes())).reason,
-      ImportFailureReason.animated,
+      ImportFailureReason.corrupt,
     );
-    expect((await importOf(apngBytes())).reason, ImportFailureReason.animated);
 
     // No partial state from any failure.
     expect(await repo.memeCount(), 0);
     expect(await media.listManagedFiles(), isEmpty);
   });
 
+  test('imports an animated GIF end to end', () async {
+    final outcome = await coordinator.importBytes(
+      animatedGifBytes(frames: 4),
+      sourceKind: MemeSourceKind.share,
+    );
+
+    final success = outcome as ImportSuccess;
+    expect(success.meme.mimeType, 'image/gif');
+    expect(success.meme.relativePath, endsWith('.gif'));
+    expect(success.meme.thumbnailPath, endsWith('_t.gif'));
+    expect(await media.exists(success.meme.relativePath), isTrue);
+    expect(await media.exists(success.meme.thumbnailPath), isTrue);
+  });
+
   test('failure messages are user-readable', () async {
     final failure =
         await coordinator.importBytes(
-              gifBytes(),
+              unknownFormatBytes(),
               sourceKind: MemeSourceKind.share,
             )
             as ImportFailure;
-    expect(failure.message, contains('PNG, JPEG, and WebP'));
+    expect(failure.message, contains('PNG, JPEG, WebP, and GIF'));
   });
 
   test('importAll reports progress and mixed outcomes', () async {
     final progress = <(int, int)>[];
     final outcomes = await coordinator.importAll(
-      [pngBytes(seed: 3), gifBytes(), jpegBytes(seed: 4)],
+      [pngBytes(seed: 3), unknownFormatBytes(), jpegBytes(seed: 4)],
       sourceKind: MemeSourceKind.share,
       onProgress: (done, total) => progress.add((done, total)),
     );

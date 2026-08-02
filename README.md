@@ -26,12 +26,14 @@ right one in seconds and drop it into any conversation.
 
 - **Save from anywhere** — paste an image, drop in a link, or share
   straight into the app from any other app.
+- **GIFs that move** — animated GIF, WebP, and APNG memes play right in
+  the grid and paste animated.
 - **Find it fast** — full-text search over titles, notes, and tags,
   tuned to answer in under 150 ms on a 10,000-meme library.
 - **Organize with tags** — filter chips, combined filters, and safe
   tag management with case-insensitive uniqueness.
 - **Reuse instantly** — copy an image to the clipboard or share it to
-  any app; WebP converts automatically where pasting needs PNG.
+  any app; static WebP converts automatically where pasting needs PNG.
 - **Never import twice** — content-hash deduplication resolves repeats
   to the meme you already have.
 - **Own your data** — everything stays on device. One-tap versioned,

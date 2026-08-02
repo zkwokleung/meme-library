@@ -123,10 +123,10 @@ void main() {
 
     test('invalid staged content is cleaned up and reported', () async {
       final service = ShareImportService(coordinator);
-      final bad = await stageFile('bad.gif', gifBytes());
+      final bad = await stageFile('bad.bin', unknownFormatBytes());
 
       final outcomes = await service.importShared([
-        IncomingSharedFile(path: bad, mimeType: 'image/gif'),
+        IncomingSharedFile(path: bad, mimeType: 'application/octet-stream'),
       ]);
 
       expect(
@@ -134,6 +134,19 @@ void main() {
         ImportFailureReason.unsupportedFormat,
       );
       expect(File(bad).existsSync(), isFalse);
+    });
+
+    test('shared animated GIFs import and stay animated', () async {
+      final service = ShareImportService(coordinator);
+      final path = await stageFile('reaction.gif', animatedGifBytes(frames: 3));
+
+      final outcomes = await service.importShared([
+        IncomingSharedFile(path: path, mimeType: 'image/gif'),
+      ]);
+
+      final meme = (outcomes.single as ImportSuccess).meme;
+      expect(meme.mimeType, 'image/gif');
+      expect(meme.thumbnailPath, endsWith('_t.gif'));
     });
   });
 }

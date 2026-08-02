@@ -17,6 +17,16 @@ class MediaStoreException implements Exception {
   String toString() => 'MediaStoreException: $message';
 }
 
+/// An encoded thumbnail plus the extension that matches its format.
+class EncodedThumbnail {
+  const EncodedThumbnail({required this.bytes, required this.extension});
+
+  final Uint8List bytes;
+
+  /// `png`, `jpg`, or `gif` (animated), without a dot.
+  final String extension;
+}
+
 /// Result of persisting an image: media-root-relative paths only.
 class StoredMedia {
   const StoredMedia({
@@ -40,6 +50,10 @@ class MediaStore {
     : _thumbnailMax = thumbnailMaxDimension;
 
   static const defaultThumbnailSize = 400;
+
+  /// Animated thumbnails sample the source down to at most this many
+  /// frames, keeping grid playback memory bounded.
+  static const maxThumbnailFrames = 48;
 
   final Directory root;
   final int _thumbnailMax;
@@ -70,8 +84,8 @@ class MediaStore {
     await init();
     final hash = knownSha256 ?? hashBytes(image.bytes);
     final originalName = '$hash.${image.fileExtension}';
-    final thumbExtension = image.hasAlpha ? 'png' : 'jpg';
-    final thumbName = '${hash}_t.$thumbExtension';
+    final thumb = encodeThumbnail(image);
+    final thumbName = '${hash}_t.${thumb.extension}';
 
     final stagedOriginal = File(p.join(_staging.path, '$originalName.tmp'));
     final stagedThumb = File(p.join(_staging.path, '$thumbName.tmp'));
@@ -80,7 +94,7 @@ class MediaStore {
 
     try {
       await stagedOriginal.writeAsBytes(image.bytes, flush: true);
-      await stagedThumb.writeAsBytes(encodeThumbnail(image), flush: true);
+      await stagedThumb.writeAsBytes(thumb.bytes, flush: true);
 
       // Hash-keyed names mean an existing destination holds identical
       // content (e.g. a concurrent import of the same image); it must
@@ -110,25 +124,83 @@ class MediaStore {
   }
 
   /// Encodes a thumbnail for [image] without writing to the store.
-  Uint8List encodeThumbnail(ValidatedImage image) {
+  ///
+  /// The output format is a pure function of the source bytes so backup
+  /// restore can regenerate a thumbnail that matches its manifest name:
+  /// animated sources become small animated GIFs (grid tiles play them),
+  /// static sources with transparency (including GIF palette
+  /// transparency) become PNG, everything else JPEG.
+  EncodedThumbnail encodeThumbnail(ValidatedImage image) {
     final decoded = img.decodeImage(image.bytes);
     if (decoded == null) {
       throw const MediaStoreException('Image could not be decoded');
     }
-    final longest = decoded.width > decoded.height
-        ? decoded.width
-        : decoded.height;
-    final resized = longest <= _thumbnailMax
-        ? decoded
-        : img.copyResize(
-            decoded,
-            width: decoded.width >= decoded.height ? _thumbnailMax : null,
-            height: decoded.height > decoded.width ? _thumbnailMax : null,
-            interpolation: img.Interpolation.average,
-          );
-    return image.hasAlpha
-        ? img.encodePng(resized)
-        : img.encodeJpg(resized, quality: 82);
+
+    if (image.isAnimated && decoded.numFrames > 1) {
+      return EncodedThumbnail(
+        bytes: _encodeAnimatedGifThumbnail(decoded),
+        extension: 'gif',
+      );
+    }
+
+    final resized = _resizeFrame(decoded);
+    final transparent = image.hasAlpha || image.fileExtension == 'gif';
+    return EncodedThumbnail(
+      bytes: transparent
+          ? img.encodePng(resized)
+          : img.encodeJpg(resized, quality: 82),
+      extension: transparent ? 'png' : 'jpg',
+    );
+  }
+
+  /// Downscaled animated GIF preserving timing and loop count, sampled
+  /// to at most [maxThumbnailFrames] frames.
+  Uint8List _encodeAnimatedGifThumbnail(img.Image decoded) {
+    final sourceFrames = decoded.frames;
+    final keepEvery = sourceFrames.length <= maxThumbnailFrames
+        ? 1
+        : sourceFrames.length / maxThumbnailFrames;
+
+    img.Image? animation;
+    var nextKept = 0.0;
+    var carriedDuration = 0;
+    for (var i = 0; i < sourceFrames.length; i++) {
+      final frame = sourceFrames[i];
+      if (i < nextKept.floor()) {
+        // Skipped frame: keep the wall-clock duration on the previous
+        // kept frame so playback speed is preserved.
+        carriedDuration += frame.frameDuration;
+        continue;
+      }
+      nextKept += keepEvery;
+
+      // Clone as a single frame first: copyResize on an animated image
+      // would resize the entire frame chain per call.
+      var single = img.Image.from(frame, noAnimation: true);
+      single = _resizeFrame(single);
+      single.frameDuration = frame.frameDuration + carriedDuration;
+      carriedDuration = 0;
+
+      if (animation == null) {
+        animation = single;
+        animation.loopCount = decoded.loopCount;
+      } else {
+        animation.addFrame(single);
+      }
+    }
+
+    return img.encodeGif(animation!, repeat: decoded.loopCount);
+  }
+
+  img.Image _resizeFrame(img.Image frame) {
+    final longest = frame.width > frame.height ? frame.width : frame.height;
+    if (longest <= _thumbnailMax) return frame;
+    return img.copyResize(
+      frame,
+      width: frame.width >= frame.height ? _thumbnailMax : null,
+      height: frame.height > frame.width ? _thumbnailMax : null,
+      interpolation: img.Interpolation.average,
+    );
   }
 
   /// Deletes the stored files for a meme. Missing files are ignored.

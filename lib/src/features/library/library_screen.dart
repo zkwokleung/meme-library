@@ -362,6 +362,10 @@ class _MemeTile extends ConsumerWidget {
             child: Image.file(
               media.resolve(meme.thumbnailPath),
               fit: BoxFit.cover,
+              // Downsamples static thumbnails; a harmless no-op for
+              // animated GIF thumbnails (the engine ignores the target
+              // size for multi-frame codecs), which MediaStore already
+              // bounds to <=400px and <=48 frames.
               cacheWidth: 320,
               errorBuilder: (_, _, _) =>
                   const Center(child: Icon(Icons.broken_image_outlined)),

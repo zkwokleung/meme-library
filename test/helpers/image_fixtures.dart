@@ -39,9 +39,62 @@ Uint8List animatedWebpBytes() {
   return b;
 }
 
+/// A real animated GIF with [frames] distinct solid-color frames.
+Uint8List animatedGifBytes({
+  int frames = 4,
+  int width = 16,
+  int height = 16,
+  int seed = 0,
+}) {
+  final encoder = img.GifEncoder();
+  for (var i = 0; i < frames; i++) {
+    final frame = img.Image(width: width, height: height);
+    img.fill(
+      frame,
+      color: img.ColorRgb8(
+        (40 * i + seed * 3) % 256,
+        (90 + 30 * i + seed) % 256,
+        (200 + 25 * i) % 256,
+      ),
+    );
+    encoder.addFrame(frame, duration: 10);
+  }
+  return encoder.finish()!;
+}
+
+/// A real single-frame GIF.
+Uint8List staticGifBytes({int width = 8, int height = 8, int seed = 0}) {
+  final image = img.Image(width: width, height: height);
+  img.fill(
+    image,
+    color: img.ColorRgb8(seed % 256, (seed * 11) % 256, (seed * 29) % 256),
+  );
+  return img.encodeGif(image);
+}
+
+/// A real APNG: encodePng emits animation chunks for multi-frame input.
+Uint8List animatedPngBytes({int frames = 3, int width = 8, int height = 8}) {
+  img.Image? animation;
+  for (var i = 0; i < frames; i++) {
+    final frame = img.Image(width: width, height: height, numChannels: 4);
+    img.fill(frame, color: img.ColorRgba8(60 * i, 255 - 60 * i, 80, 255));
+    frame.frameDuration = 100;
+    if (animation == null) {
+      animation = frame;
+    } else {
+      animation.addFrame(frame);
+    }
+  }
+  return img.encodePng(animation!);
+}
+
+/// Bytes with no recognizable image signature.
+Uint8List unknownFormatBytes() => Uint8List.fromList(List.filled(64, 42));
+
 /// A valid PNG with an `acTL` (APNG animation control) chunk inserted
-/// before IDAT. The chunk CRC is bogus, but animation detection happens
-/// before decoding.
+/// before IDAT declaring a single frame. The chunk CRC is bogus, but
+/// header parsing tolerates it; this pins the "acTL present but not
+/// actually animated" edge case.
 Uint8List apngBytes() {
   final base = pngBytes();
   // IHDR is always the first chunk: 8 signature + 25 IHDR bytes.
@@ -60,5 +113,6 @@ Uint8List apngBytes() {
   ]);
 }
 
+/// A GIF signature followed by garbage: sniffs as GIF, fails to decode.
 Uint8List gifBytes() =>
     Uint8List.fromList([...'GIF89a'.codeUnits, ...List.filled(32, 0)]);

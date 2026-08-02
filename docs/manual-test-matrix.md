@@ -15,7 +15,8 @@ devices before each release. Record the device, OS version, and result.
 | Share one image from Photos / Gallery (app closed) | | |
 | Share one image (app in background) | | |
 | Share multiple images at once | | |
-| Share an animated GIF → rejected with a clear message | | |
+| Share an animated GIF → imports; tile plays in the grid and detail | | |
+| Paste a copied GIF → imports animated (not flattened to a still) | | |
 
 ## Reuse
 
@@ -23,7 +24,8 @@ devices before each release. Record the device, OS version, and result.
 | ---- | --- | ------- |
 | Copy → paste into iMessage / WhatsApp | | |
 | Copy → paste into Telegram / Slack | | |
-| Copy a WebP meme → pastes as PNG (iOS conversion) | | |
+| Copy a static WebP meme → pastes as PNG (iOS conversion) | | |
+| Copy a GIF meme → pastes animated into Telegram / Slack | | |
 | Share sheet → save to Files / Drive | | |
 | Copy unsupported → falls back to share sheet | | |
 
@@ -34,6 +36,7 @@ devices before each release. Record the device, OS version, and result.
 | Export completes on a 500+ item library without OOM | | |
 | Restore on a clean install reproduces the library | | |
 | Restore an older backup over a newer library (replace confirmed) | | |
+| Backup round-trips an animated meme; thumbnail still plays | | |
 
 ## Accessibility
 

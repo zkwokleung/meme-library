@@ -67,7 +67,12 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
 
   private func readClipboardImage() -> [String: Any?]? {
     let pasteboard = UIPasteboard.general
-    for type in [UTType.png.identifier, UTType.jpeg.identifier, UTType.webP.identifier] {
+    // GIF must be checked before the pasteboard.image fallback, which
+    // would flatten an animation into a static PNG.
+    for type in [
+      UTType.gif.identifier, UTType.png.identifier,
+      UTType.jpeg.identifier, UTType.webP.identifier,
+    ] {
       if let data = pasteboard.data(forPasteboardType: type), !data.isEmpty {
         return ["bytes": FlutterStandardTypedData(bytes: data), "name": nil]
       }
@@ -85,6 +90,9 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
       type = UTType.png.identifier
     } else if data.starts(with: [0xFF, 0xD8, 0xFF]) {
       type = UTType.jpeg.identifier
+    } else if data.starts(with: [0x47, 0x49, 0x46, 0x38]) {
+      // GIF89a/87a: set the raw bytes so the animation survives the paste.
+      type = UTType.gif.identifier
     } else if data.count > 12, data[8...11].elementsEqual("WEBP".utf8) {
       // WebP pastes poorly across apps; convert to PNG for compatibility.
       guard let image = UIImage(data: data), let png = image.pngData() else { return false }

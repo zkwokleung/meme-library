@@ -341,7 +341,7 @@ class BackupService {
         await original.readAsBytes(),
       );
       await thumbTarget.writeAsBytes(
-        _media.encodeThumbnail(validated),
+        _media.encodeThumbnail(validated).bytes,
         flush: true,
       );
     } catch (_) {

@@ -60,6 +60,47 @@ void main() {
     expect(thumb.width, 4);
   });
 
+  test('animated GIFs get animated GIF thumbnails', () async {
+    final image = validator.validate(
+      animatedGifBytes(frames: 4, width: 64, height: 64),
+    );
+    final stored = await store.store(image);
+    expect(stored.thumbnailPath, endsWith('_t.gif'));
+
+    final thumb = img.decodeImage(
+      await store.resolve(stored.thumbnailPath).readAsBytes(),
+    )!;
+    expect(thumb.numFrames, 4);
+    expect(thumb.width, lessThanOrEqualTo(16));
+  });
+
+  test('long animations sample down to the frame budget', () async {
+    final image = validator.validate(
+      animatedGifBytes(frames: MediaStore.maxThumbnailFrames * 2, width: 8),
+    );
+    final stored = await store.store(image);
+    final thumb = img.decodeImage(
+      await store.resolve(stored.thumbnailPath).readAsBytes(),
+    )!;
+    expect(thumb.numFrames, MediaStore.maxThumbnailFrames);
+  });
+
+  test('static GIFs get PNG thumbnails', () async {
+    final image = validator.validate(staticGifBytes());
+    final stored = await store.store(image);
+    expect(stored.thumbnailPath, endsWith('_t.png'));
+  });
+
+  test('APNGs get animated GIF thumbnails', () async {
+    final image = validator.validate(animatedPngBytes(frames: 3));
+    final stored = await store.store(image);
+    expect(stored.thumbnailPath, endsWith('_t.gif'));
+    final thumb = img.decodeImage(
+      await store.resolve(stored.thumbnailPath).readAsBytes(),
+    )!;
+    expect(thumb.numFrames, 3);
+  });
+
   test('staging is empty after a successful store', () async {
     await store.store(validator.validate(pngBytes(seed: 2)));
     final staged = Directory(p.join(root.path, 'staging')).listSync();

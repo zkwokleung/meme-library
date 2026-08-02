@@ -11,7 +11,6 @@ import '../domain/meme.dart';
 enum ImportFailureReason {
   emptySource,
   unsupportedFormat,
-  animated,
   tooLarge,
   corrupt,
   network,
@@ -165,7 +164,6 @@ class ImportCoordinator {
         ImageRejection.tooManyPixels => ImportFailureReason.tooLarge,
         ImageRejection.unsupportedFormat =>
           ImportFailureReason.unsupportedFormat,
-        ImageRejection.animated => ImportFailureReason.animated,
         ImageRejection.corrupt => ImportFailureReason.corrupt,
       };
 
@@ -175,8 +173,7 @@ class ImportCoordinator {
         ImageRejection.tooLarge => 'The image is too large to import.',
         ImageRejection.tooManyPixels => 'The image is too large to import.',
         ImageRejection.unsupportedFormat =>
-          'Only PNG, JPEG, and WebP images are supported.',
-        ImageRejection.animated => 'Animated images are not supported.',
+          'Only PNG, JPEG, WebP, and GIF images are supported.',
         ImageRejection.corrupt => 'The image data is damaged or incomplete.',
       };
 }

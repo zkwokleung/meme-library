@@ -7,7 +7,6 @@ enum ImageRejection {
   empty,
   tooLarge,
   unsupportedFormat,
-  animated,
   corrupt,
   tooManyPixels,
 }
@@ -31,6 +30,7 @@ class ValidatedImage {
     required this.width,
     required this.height,
     required this.hasAlpha,
+    required this.frameCount,
   });
 
   /// Original encoded bytes, stored untouched.
@@ -38,31 +38,50 @@ class ValidatedImage {
 
   final String mimeType;
 
-  /// Canonical extension without a dot: `png`, `jpg`, or `webp`.
+  /// Canonical extension without a dot: `png`, `jpg`, `webp`, or `gif`.
   final String fileExtension;
 
+  /// Canvas dimensions from the header (an animation frame can be a
+  /// sub-rect of the canvas).
   final int width;
   final int height;
+
   final bool hasAlpha;
+  final int frameCount;
+
+  bool get isAnimated => frameCount > 1;
 
   int get sizeBytes => bytes.length;
 }
 
-/// Validates that bytes are a static PNG, JPEG, or WebP within size limits.
+/// Validates that bytes are a PNG, JPEG, WebP, or GIF within size limits.
 ///
-/// Animated images (APNG, animated WebP, GIF) and any other format are
-/// rejected. The original bytes are never re-encoded.
+/// Animated images (GIF, APNG, animated WebP) are accepted, bounded by
+/// [maxFrames] and [maxTotalFramePixels]. The original bytes are never
+/// re-encoded, and validation never rasterizes more than one frame.
 class ImageValidator {
   const ImageValidator({
     this.maxFileSizeBytes = defaultMaxFileSizeBytes,
     this.maxPixels = defaultMaxPixels,
+    this.maxTotalFramePixels = defaultMaxTotalFramePixels,
+    this.maxFrames = defaultMaxFrames,
   });
 
   static const defaultMaxFileSizeBytes = 25 * 1024 * 1024;
   static const defaultMaxPixels = 50 * 1000 * 1000;
 
+  /// Frames x canvas pixels: caps the memory of a full animation decode
+  /// at the same level as the existing static worst case.
+  static const defaultMaxTotalFramePixels = 50 * 1000 * 1000;
+
+  /// Guards degenerate files (a tiny canvas can otherwise declare
+  /// millions of frames whose object overhead alone would exhaust memory).
+  static const defaultMaxFrames = 1000;
+
   final int maxFileSizeBytes;
   final int maxPixels;
+  final int maxTotalFramePixels;
+  final int maxFrames;
 
   ValidatedImage validate(Uint8List bytes) {
     if (bytes.isEmpty) {
@@ -80,28 +99,42 @@ class ImageValidator {
       _Format.png => img.PngDecoder(),
       _Format.jpeg => img.JpegDecoder(),
       _Format.webp => img.WebPDecoder(),
+      _Format.gif => img.GifDecoder(),
     };
 
-    // Check the declared dimensions from the header BEFORE rasterizing:
-    // a tiny compressed file can declare a huge canvas (decompression
-    // bomb) and the allocation itself would take the app down.
-    final img.DecodeInfo? info;
-    final img.Image? decoded;
+    // Check declared dimensions and frame counts from the header BEFORE
+    // rasterizing: a tiny compressed file can declare a huge canvas or
+    // frame list (decompression bomb) and the allocation itself would
+    // take the app down.
+    final img.DecodeInfo info;
+    final img.Image? firstFrame;
     try {
-      info = decoder.startDecode(bytes);
-      if (info == null) {
+      final parsed = decoder.startDecode(bytes);
+      if (parsed == null) {
         throw const ImageValidationException(
           ImageRejection.corrupt,
           'Image data could not be decoded',
         );
       }
+      info = parsed;
       if (info.width * info.height > maxPixels) {
         throw ImageValidationException(
           ImageRejection.tooManyPixels,
           'Image is ${info.width}x${info.height}; pixel limit is $maxPixels',
         );
       }
-      decoded = decoder.decode(bytes);
+      final frameCount = info.numFrames < 1 ? 1 : info.numFrames;
+      if (frameCount > maxFrames ||
+          frameCount * info.width * info.height > maxTotalFramePixels) {
+        throw ImageValidationException(
+          ImageRejection.tooManyPixels,
+          'Animation of $frameCount frames at ${info.width}x${info.height} '
+          'exceeds the pixel limit',
+        );
+      }
+      // Integrity check on a single frame only; the full animation is
+      // never rasterized during validation.
+      firstFrame = decoder.decodeFrame(0);
     } on ImageValidationException {
       rethrow;
     } catch (_) {
@@ -112,7 +145,7 @@ class ImageValidator {
         'Image data could not be decoded',
       );
     }
-    if (decoded == null) {
+    if (firstFrame == null) {
       throw const ImageValidationException(
         ImageRejection.corrupt,
         'Image data could not be decoded',
@@ -125,42 +158,35 @@ class ImageValidator {
         _Format.png => 'image/png',
         _Format.jpeg => 'image/jpeg',
         _Format.webp => 'image/webp',
+        _Format.gif => 'image/gif',
       },
       fileExtension: switch (format) {
         _Format.png => 'png',
         _Format.jpeg => 'jpg',
         _Format.webp => 'webp',
+        _Format.gif => 'gif',
       },
-      width: decoded.width,
-      height: decoded.height,
-      // 4 = RGBA; 2 = grayscale + alpha (PNG color type 4).
-      hasAlpha: decoded.numChannels == 4 || decoded.numChannels == 2,
+      width: info.width,
+      height: info.height,
+      // 4 = RGBA; 2 = grayscale + alpha (PNG color type 4); a 4-channel
+      // palette means an indexed image with a transparent entry (GIF,
+      // indexed PNG).
+      hasAlpha:
+          firstFrame.numChannels == 4 ||
+          firstFrame.numChannels == 2 ||
+          (firstFrame.palette?.numChannels == 4),
+      frameCount: info.numFrames < 1 ? 1 : info.numFrames,
     );
   }
 
   _Format _sniffFormat(Uint8List bytes) {
-    if (_isPng(bytes)) {
-      if (_pngHasAnimationChunk(bytes)) {
-        throw const ImageValidationException(
-          ImageRejection.animated,
-          'Animated PNG is not supported',
-        );
-      }
-      return _Format.png;
-    }
+    if (_isPng(bytes)) return _Format.png;
     if (_isJpeg(bytes)) return _Format.jpeg;
-    if (_isWebP(bytes)) {
-      if (_webPIsAnimated(bytes)) {
-        throw const ImageValidationException(
-          ImageRejection.animated,
-          'Animated WebP is not supported',
-        );
-      }
-      return _Format.webp;
-    }
+    if (_isWebP(bytes)) return _Format.webp;
+    if (_isGif(bytes)) return _Format.gif;
     throw const ImageValidationException(
       ImageRejection.unsupportedFormat,
-      'Only static PNG, JPEG, and WebP images are supported',
+      'Only PNG, JPEG, WebP, and GIF images are supported',
     );
   }
 
@@ -189,39 +215,15 @@ class ImageValidator {
       b[10] == 0x42 &&
       b[11] == 0x50;
 
-  /// Walks PNG chunks looking for an `acTL` chunk before `IDAT`, which
-  /// marks the file as APNG.
-  static bool _pngHasAnimationChunk(Uint8List b) {
-    var offset = 8;
-    final view = ByteData.sublistView(b);
-    while (offset + 8 <= b.length) {
-      final length = view.getUint32(offset);
-      final type = String.fromCharCodes(b.sublist(offset + 4, offset + 8));
-      if (type == 'acTL') return true;
-      if (type == 'IDAT' || type == 'IEND') return false;
-      offset += 12 + length;
-    }
-    return false;
-  }
-
-  /// Checks the VP8X animation flag and ANIM chunks.
-  static bool _webPIsAnimated(Uint8List b) {
-    if (b.length < 21) return false;
-    final fourCc = String.fromCharCodes(b.sublist(12, 16));
-    if (fourCc == 'VP8X' && (b[20] & 0x02) != 0) return true;
-    // Defensive scan for ANIM chunk in the first kilobyte. The bound
-    // keeps i+3 in range for files of any length.
-    final limit = (b.length < 1024 ? b.length : 1024) - 3;
-    for (var i = 12; i < limit; i++) {
-      if (b[i] == 0x41 &&
-          b[i + 1] == 0x4E &&
-          b[i + 2] == 0x49 &&
-          b[i + 3] == 0x4D) {
-        return true;
-      }
-    }
-    return false;
-  }
+  /// `GIF87a` or `GIF89a`.
+  static bool _isGif(Uint8List b) =>
+      b.length > 6 &&
+      b[0] == 0x47 &&
+      b[1] == 0x49 &&
+      b[2] == 0x46 &&
+      b[3] == 0x38 &&
+      (b[4] == 0x37 || b[4] == 0x39) &&
+      b[5] == 0x61;
 }
 
-enum _Format { png, jpeg, webp }
+enum _Format { png, jpeg, webp, gif }

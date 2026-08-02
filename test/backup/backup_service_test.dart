@@ -3,9 +3,11 @@ import 'dart:io';
 
 import 'package:archive/archive_io.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:meme_library/src/backup/backup_service.dart';
 import 'package:meme_library/src/domain/library_query.dart';
 import 'package:meme_library/src/domain/meme.dart';
+import 'package:meme_library/src/import/import_coordinator.dart';
 import 'package:path/path.dart' as p;
 
 import '../helpers/image_fixtures.dart';
@@ -193,6 +195,46 @@ void main() {
       await service.restoreArchive(stripped);
       expect(await harness.mediaStore.exists(meme.thumbnailPath), isTrue);
     });
+
+    test(
+      'round-trips an animated meme, regenerating an animated thumb',
+      () async {
+        final coordinator = ImportCoordinator(
+          repository: harness.repository,
+          mediaStore: harness.mediaStore,
+        );
+        final meme =
+            (await coordinator.importBytes(
+                      animatedGifBytes(frames: 4),
+                      sourceKind: MemeSourceKind.clipboard,
+                    )
+                    as ImportSuccess)
+                .meme;
+        expect(meme.thumbnailPath, endsWith('_t.gif'));
+
+        final zip = await service.exportArchive();
+
+        // Strip thumbnails so restore has to regenerate the animated one.
+        final original = ZipDecoder().decodeBytes(await zip.readAsBytes());
+        final entries = <String, List<int>>{
+          for (final file in original.files)
+            if (file.isFile && !file.name.startsWith('media/thumbs/'))
+              file.name: file.readBytes()!,
+        };
+        final stripped = await buildArchive(entries, name: 'anim.zip');
+
+        await service.restoreArchive(stripped);
+
+        final restored = await harness.repository.memeById(meme.id);
+        expect(restored!.mimeType, 'image/gif');
+        final thumb = img.decodeImage(
+          await harness.mediaStore
+              .resolve(restored.thumbnailPath)
+              .readAsBytes(),
+        )!;
+        expect(thumb.numFrames, 4, reason: 'thumbnail must stay animated');
+      },
+    );
   });
 
   group('corrupt and incompatible archives', () {
