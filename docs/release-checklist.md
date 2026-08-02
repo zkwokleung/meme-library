@@ -2,17 +2,19 @@
 
 ## Automated (every release tag)
 
-CI (`release.yml`) builds from a clean checkout:
+Pushing a `vX.Y.Z` tag runs both workflows from a clean checkout:
 
-- [ ] `CI` workflow green on the tagged commit (format, analyze, tests,
-      Android debug, iOS simulator).
-- [ ] Tag `vX.Y.Z` pushed; `Release` workflow produced the APK, AAB, and
-      unsigned IPA on the GitHub release.
+- `CI` (format, analyze, tests, Android debug, iOS simulator) — also
+  triggered by the tag itself.
+- `Release`: a verify job re-runs format/analyze/tests and fails unless
+  the tag matches `version:` in `pubspec.yaml`, then builds the APK,
+  AAB, and unsigned IPA and publishes them on the GitHub release.
+  Artifacts built without signing secrets are suffixed `-debugsigned`.
 
 ## Versioning
 
-- [ ] `version:` bumped in `pubspec.yaml` (name+build, e.g. `1.0.0+2`).
-- [ ] Tag matches the pubspec version.
+- [ ] `version:` bumped in `pubspec.yaml` (name+build, e.g. `1.0.1+2`)
+      before tagging — the release verify job enforces the match.
 
 ## Signing
 
