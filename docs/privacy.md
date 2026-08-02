@@ -4,10 +4,25 @@ Meme Library is local-first by design.
 
 ## What the app stores
 
-- Images you explicitly save (from your clipboard, links, or shares) and
-  the metadata you add (titles, notes, tags).
+- Images you explicitly save (from your photo library, clipboard,
+  links, or shares) and the metadata you add (titles, notes, tags).
 - Everything lives in the app's private storage on your device. Nothing
   is uploaded anywhere.
+
+## Your photo library
+
+The app holds **no photo-library permission** and cannot browse your
+photos. Picking images opens the system photo picker, which runs outside
+the app — `PHPickerViewController` on iOS, the Android photo picker on
+Android — and hands back only the individual images you select. You will
+never see a "allow access to your photos" prompt, because the app never
+asks for access.
+
+Thumbnails the app generates carry no camera or location metadata: EXIF
+is stripped when a thumbnail is encoded, so a shared backup archive
+cannot leak where or with what a photo was taken. Original images are
+stored byte-for-byte as you saved them and keep whatever metadata they
+already had.
 
 ## Network access
 
@@ -34,7 +49,7 @@ Data leaves the device only when you trigger it:
 
 | Category            | Collected | Shared | Notes                       |
 | ------------------- | --------- | ------ | --------------------------- |
-| Photos and images   | On-device only | No | User-saved memes            |
+| Photos and images   | On-device only | No | User-saved memes; no library access |
 | Personal identifiers| No        | No     |                             |
 | Location            | No        | No     |                             |
 | Usage analytics     | No        | No     |                             |

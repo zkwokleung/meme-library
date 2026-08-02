@@ -28,7 +28,8 @@ Pushing a `vX.Y.Z` tag runs both workflows from a clean checkout:
 
 See `docs/manual-test-matrix.md` for the full matrix. Blockers:
 
-- [ ] Clean install: import via clipboard, link, and share.
+- [ ] Clean install: import via photos, clipboard, link, and share.
+- [ ] First photo pick raises **no permission prompt** on either platform.
 - [ ] Upgrade install from the previous release: library intact.
 - [ ] Copy → paste into two messaging apps; share sheet works.
 - [ ] Backup export, uninstall, reinstall, restore: library reproduced.
@@ -38,4 +39,11 @@ See `docs/manual-test-matrix.md` for the full matrix. Blockers:
 
 - [ ] Listing describes local-only storage accurately (`docs/privacy.md`).
 - [ ] Data safety / privacy label: no data collected.
+- [ ] Merged Android manifest declares no permission beyond `INTERNET`
+      and androidx's app-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+      — CI asserts this, but confirm before a store upload since plugin
+      updates can merge in new permissions silently. In particular the
+      photo picker must never pull in `READ_MEDIA_IMAGES`.
+- [ ] `NSPhotoLibraryUsageDescription` present and honest (PHPicker never
+      triggers it, but App Review expects the key).
 - [ ] Screenshots up to date.

@@ -1,4 +1,7 @@
 import Flutter
+import ImageIO
+import Photos
+import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -29,8 +32,15 @@ import UniformTypeIdentifiers
 public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
   static let appGroupId = "group.com.zkwokleung.memelibrary"
 
+  /// Mirrors ImageValidator.defaultMaxFileSizeBytes on the Dart side.
+  static let maxImportBytes = 25 * 1024 * 1024
+
+  /// Mirrors ImageValidator.defaultMaxPixels on the Dart side.
+  static let maxImportPixels = 50_000_000
+
   private var eventSink: FlutterEventSink?
   private var observer: NSObjectProtocol?
+  private var pickerDelegate: GalleryPickerDelegate?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = PlatformChannels()
@@ -58,9 +68,120 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
       result(writeClipboardImage(data: bytes.data))
     case "shares.takeInitial":
       result(Self.drainShareInbox())
+    case "gallery.pickImages":
+      presentGalleryPicker(result: result)
+    case "image.transcodeToJpeg":
+      guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String else {
+        result(nil)
+        return
+      }
+      // Decoding a 50 MP image is not main-thread work.
+      DispatchQueue.global(qos: .userInitiated).async {
+        let payload = Self.transcodeToJpeg(path: path)
+        DispatchQueue.main.async { result(payload) }
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  // MARK: - Gallery picker
+
+  /// Presents `PHPickerViewController` and returns `[{path, name}]`, or an
+  /// empty list when the user cancels.
+  ///
+  /// PHPicker runs out of process, so this needs no photo-library
+  /// permission and shows no authorization prompt. `.current` asset
+  /// representation plus `loadDataRepresentation` hands back the original
+  /// file bytes — animated GIF, animated WebP, and APNG all survive, which
+  /// a `UIImage` round trip would destroy.
+  private func presentGalleryPicker(result: @escaping FlutterResult) {
+    // FlutterResult takes Any?, which gives a bare `[]` literal no type to
+    // infer from; spell the element type out.
+    let noSelection = [[String: Any?]]()
+    guard let root = UIApplication.shared.connectedScenes
+      .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+      .first?.rootViewController else {
+      result(noSelection)
+      return
+    }
+    if pickerDelegate != nil {
+      // A picker is already on screen; a second request would leak the
+      // first delegate and strand its Flutter result.
+      result(noSelection)
+      return
+    }
+
+    var config = PHPickerConfiguration(photoLibrary: .shared())
+    config.filter = .images
+    config.selectionLimit = 0
+    config.preferredAssetRepresentationMode = .current
+
+    let controller = PHPickerViewController(configuration: config)
+    let delegate = GalleryPickerDelegate { [weak self] picked in
+      self?.pickerDelegate = nil
+      result(picked)
+    }
+    pickerDelegate = delegate
+    controller.delegate = delegate
+    root.present(controller, animated: true)
+  }
+
+  // MARK: - HEIC transcode
+
+  /// Re-encodes a HEIF-family image at [path] as JPEG, or returns nil when
+  /// it is not HEIF or would breach the import limits.
+  ///
+  /// The rotation is baked into the pixels rather than written as an
+  /// orientation tag, so the JPEG that reaches Dart needs no special
+  /// handling and hashes the same however the source expressed rotation.
+  static func transcodeToJpeg(path: String) -> [String: Any?]? {
+    let url = URL(fileURLWithPath: path)
+    guard let size = (try? FileManager.default
+      .attributesOfItem(atPath: path)[.size]) as? Int,
+      size > 0, size <= maxImportBytes else {
+      return nil
+    }
+
+    let options = [kCGImageSourceShouldCache: false] as CFDictionary
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, options),
+          CGImageSourceGetCount(source) > 0,
+          let uti = CGImageSourceGetType(source) as String?,
+          let sourceType = UTType(uti),
+          sourceType.conforms(to: .heic) || sourceType.conforms(to: .heif) else {
+      return nil
+    }
+
+    // Header-only pixel check before allocating anything: a small HEIC can
+    // declare an enormous canvas.
+    let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    let width = props?[kCGImagePropertyPixelWidth] as? Int ?? 0
+    let height = props?[kCGImagePropertyPixelHeight] as? Int ?? 0
+    guard width > 0, height > 0, width * height <= maxImportPixels else {
+      return nil
+    }
+
+    guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+          let image = UIImage(data: data) else {
+      return nil
+    }
+
+    // UIImage carries the container's orientation; rendering it once
+    // yields upright pixels.
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    format.opaque = true
+    let upright = UIGraphicsImageRenderer(size: image.size, format: format)
+      .image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
+
+    // Quality 1.0 on a 12 MP photo routinely exceeds the source HEIC
+    // several times over and can breach the import cap.
+    guard let jpeg = upright.jpegData(compressionQuality: 0.92),
+          !jpeg.isEmpty, jpeg.count <= maxImportBytes else {
+      return nil
+    }
+    return ["bytes": FlutterStandardTypedData(bytes: jpeg)]
   }
 
   // MARK: - Clipboard
@@ -164,5 +285,61 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
     observer = nil
     eventSink = nil
     return nil
+  }
+}
+
+/// Copies each picked asset's original bytes into the temporary directory
+/// and reports the staged paths.
+///
+/// Held as a strong reference by `PlatformChannels` for the lifetime of
+/// one presentation: `PHPickerViewController.delegate` is weak, and the
+/// Flutter result must be delivered exactly once.
+private final class GalleryPickerDelegate: NSObject, PHPickerViewControllerDelegate {
+  init(completion: @escaping ([[String: Any?]]) -> Void) {
+    self.completion = completion
+  }
+
+  private let completion: ([[String: Any?]]) -> Void
+  private var finished = false
+
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true)
+    guard !finished else { return }
+    finished = true
+
+    if results.isEmpty {
+      completion([])
+      return
+    }
+
+    // Results load concurrently but must be reported in the order the user
+    // picked them, so collect into a fixed-size slot array.
+    var staged = [[String: Any?]?](repeating: nil, count: results.count)
+    let group = DispatchGroup()
+    let lock = NSLock()
+
+    for (index, result) in results.enumerated() {
+      group.enter()
+      let name = result.itemProvider.suggestedName
+      result.itemProvider.loadDataRepresentation(
+        forTypeIdentifier: UTType.image.identifier
+      ) { data, _ in
+        defer { group.leave() }
+        guard let data, !data.isEmpty,
+              data.count <= PlatformChannels.maxImportBytes else {
+          return
+        }
+        let target = URL(fileURLWithPath: NSTemporaryDirectory())
+          .appendingPathComponent(UUID().uuidString)
+        guard (try? data.write(to: target, options: .atomic)) != nil else { return }
+        lock.lock()
+        staged[index] = ["path": target.path, "name": name]
+        lock.unlock()
+      }
+    }
+
+    group.notify(queue: .main) { [completion] in
+      completion(staged.compactMap { $0 })
+    }
   }
 }

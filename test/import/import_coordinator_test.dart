@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/data/database/app_database.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/data/library_repository.dart';
 import 'package:meme_library/src/data/media_store.dart';
 import 'package:meme_library/src/domain/meme.dart';
@@ -23,7 +24,11 @@ void main() {
     media = MediaStore(root);
     await media.init();
     repo = DriftLibraryRepository(db, media);
-    coordinator = ImportCoordinator(repository: repo, mediaStore: media);
+    coordinator = ImportCoordinator(
+      repository: repo,
+      mediaStore: media,
+      pipeline: const InlineImagePipeline(),
+    );
   });
 
   tearDown(() async {

@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -12,7 +14,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 class MainActivity : FlutterActivity() {
@@ -23,6 +27,9 @@ class MainActivity : FlutterActivity() {
 
         /** Mirrors ImageValidator.defaultMaxFileSizeBytes on the Dart side. */
         private const val MAX_IMPORT_BYTES = 25L * 1024 * 1024
+
+        /** Mirrors ImageValidator.defaultMaxPixels on the Dart side. */
+        private const val MAX_IMPORT_PIXELS = 50L * 1000 * 1000
     }
 
     /** Shares received before the Dart side asked for them (cold start). */
@@ -65,6 +72,20 @@ class MainActivity : FlutterActivity() {
                     val shares = pendingShares.toList()
                     pendingShares.clear()
                     result.success(shares)
+                }
+                "image.transcodeToJpeg" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.success(null)
+                    } else {
+                        // Decoding a 50 MP image is not main-thread work.
+                        Thread {
+                            val bytes = transcodeToJpeg(path)
+                            runOnUiThread {
+                                result.success(bytes?.let { mapOf("bytes" to it) })
+                            }
+                        }.start()
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -193,6 +214,47 @@ class MainActivity : FlutterActivity() {
             }
         }
         return null
+    }
+
+    /**
+     * Re-encodes a HEIF-family image as JPEG, or returns null when it
+     * cannot be decoded or would breach the import limits.
+     *
+     * The Android photo picker hands back HEIC bytes verbatim and no
+     * bundled Dart decoder can read them, so this is the only way a HEIC
+     * photo enters the library. ImageDecoder applies the container
+     * orientation itself, so the result is already upright and carries no
+     * orientation tag.
+     */
+    private fun transcodeToJpeg(path: String): ByteArray? {
+        return try {
+            val file = File(path)
+            if (!file.isFile || file.length() == 0L || file.length() > MAX_IMPORT_BYTES) {
+                return null
+            }
+            val source = ImageDecoder.createSource(file)
+            val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                // Bitmap.compress throws on HARDWARE bitmaps, which is
+                // what ImageDecoder produces by default.
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+                val pixels = info.size.width.toLong() * info.size.height
+                if (pixels > MAX_IMPORT_PIXELS) {
+                    throw IOException("declared pixel count $pixels over the limit")
+                }
+            }
+            // HEIC can carry alpha and JPEG cannot, so a transparent source
+            // composites onto black. Vanishingly rare for camera photos,
+            // and a 12 MP PNG alternative would blow past the size cap.
+            val out = ByteArrayOutputStream()
+            val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            bitmap.recycle()
+            if (!ok || out.size() == 0 || out.size() > MAX_IMPORT_BYTES) null else out.toByteArray()
+        } catch (e: Exception) {
+            // Never log image content; the failure alone is enough.
+            Log.w(TAG, "transcodeToJpeg failed", e)
+            null
+        }
     }
 
     /**

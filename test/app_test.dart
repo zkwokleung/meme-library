@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/app/app.dart';
+import 'package:meme_library/src/domain/meme.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
+import 'package:meme_library/src/services/platform/gallery_picker.dart';
+import 'package:path/path.dart' as p;
 
 import 'helpers/image_fixtures.dart';
 import 'helpers/test_harness.dart';
@@ -42,7 +47,9 @@ void main() {
     expect(find.text('Meme Library'), findsOneWidget);
     expect(find.text('Your meme stash starts here'), findsOneWidget);
     expect(
-      find.text('Save memes from your clipboard, another app, or a link.'),
+      find.text(
+        'Save memes from your photos, clipboard, another app, or a link.',
+      ),
       findsOneWidget,
     );
   });
@@ -66,6 +73,94 @@ void main() {
     // The empty state is replaced by the grid once the reload lands.
     await pumpUntil(tester, () => harnessLibraryState(tester).items.isNotEmpty);
     expect(find.text('Your meme stash starts here'), findsNothing);
+  });
+
+  /// Writes [images] into a temp directory and arms the fake picker.
+  Future<List<String>> armGalleryPicker(
+    WidgetTester tester,
+    List<List<int>> images,
+  ) async {
+    final paths = <String>[];
+    final picked = <PickedGalleryImage>[];
+    await tester.runAsync(() async {
+      final dir = Directory(p.join(harness.root.path, 'picks'));
+      await dir.create(recursive: true);
+      for (var i = 0; i < images.length; i++) {
+        final file = File(p.join(dir.path, 'IMG_$i.png'));
+        await file.writeAsBytes(images[i], flush: true);
+        paths.add(file.path);
+        picked.add(
+          PickedGalleryImage(path: file.path, displayName: 'IMG_$i.png'),
+        );
+      }
+    });
+    harness.gallery.picked = picked;
+    return paths;
+  }
+
+  testWidgets('imports from the photo gallery via the add sheet', (
+    tester,
+  ) async {
+    final paths = await armGalleryPicker(tester, [pngBytes(seed: 11)]);
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save from photos'));
+    await pumpUntilFound(tester, find.text('Added to your library'));
+
+    expect(await tester.runAsync(() => harness.repository.memeCount()), 1);
+    await pumpUntil(tester, () => harnessLibraryState(tester).items.isNotEmpty);
+    final meme = harnessLibraryState(tester).items.single;
+    expect(meme.sourceKind, MemeSourceKind.gallery);
+    expect(meme.sourceRef, 'IMG_0.png');
+    // The picker's temporary copy is ours to clean up.
+    expect(File(paths.single).existsSync(), isFalse);
+  });
+
+  testWidgets('cancelling the photo picker leaves the library untouched', (
+    tester,
+  ) async {
+    harness.gallery.picked = const [];
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save from photos'));
+    await flushIo(tester);
+
+    expect(harness.gallery.pickCount, 1);
+    // A cancel is not an outcome: no SnackBar at all, least of all an
+    // error one.
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('Nothing to import'), findsNothing);
+    expect(await tester.runAsync(() => harness.repository.memeCount()), 0);
+    expect(find.text('Your meme stash starts here'), findsOneWidget);
+  });
+
+  testWidgets('a multi-photo import summarises added and duplicate counts', (
+    tester,
+  ) async {
+    await armGalleryPicker(tester, [
+      pngBytes(seed: 21),
+      pngBytes(seed: 22),
+      // Same content as the first: resolves as a duplicate.
+      pngBytes(seed: 21),
+    ]);
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save from photos'));
+    await pumpUntilFound(tester, find.text('2 added · 1 already saved'));
+
+    expect(await tester.runAsync(() => harness.repository.memeCount()), 2);
   });
 
   testWidgets('re-importing the same image reports a duplicate', (

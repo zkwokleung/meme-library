@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/data/database/app_database.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/data/library_repository.dart';
 import 'package:meme_library/src/data/media_store.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
@@ -25,7 +26,11 @@ void main() {
     media = MediaStore(root);
     await media.init();
     repo = DriftLibraryRepository(db, media);
-    coordinator = ImportCoordinator(repository: repo, mediaStore: media);
+    coordinator = ImportCoordinator(
+      repository: repo,
+      mediaStore: media,
+      pipeline: const InlineImagePipeline(),
+    );
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   });
 

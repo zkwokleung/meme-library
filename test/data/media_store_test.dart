@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -99,6 +100,68 @@ void main() {
       await store.resolve(stored.thumbnailPath).readAsBytes(),
     )!;
     expect(thumb.numFrames, 3);
+  });
+
+  group('EXIF orientation', () {
+    test('thumbnails of rotated images are upright', () async {
+      // Stored pixels are landscape; the orientation tag asks for a
+      // quarter turn, so the thumbnail must come out portrait.
+      final image = validator.validate(
+        rotatedJpegBytes(orientation: 6, width: 800, height: 600),
+      );
+      expect(image.width, 600, reason: 'validator reports displayed size');
+      expect(image.height, 800);
+
+      final stored = await store.store(image);
+      final thumb = img.decodeImage(
+        await store.resolve(stored.thumbnailPath).readAsBytes(),
+      )!;
+      expect(thumb.height, greaterThan(thumb.width));
+    });
+
+    test('a rotated thumbnail stays inside the size budget', () async {
+      // Measuring before baking picks the wrong resize axis and lets the
+      // longest edge overshoot the maximum.
+      for (final orientation in [1, 3, 6, 8]) {
+        final image = validator.validate(
+          rotatedJpegBytes(
+            orientation: orientation,
+            width: 800,
+            height: 600,
+            seed: orientation,
+          ),
+        );
+        final stored = await store.store(image);
+        final thumb = img.decodeImage(
+          await store.resolve(stored.thumbnailPath).readAsBytes(),
+        )!;
+        expect(thumb.width, lessThanOrEqualTo(16), reason: 'o$orientation');
+        expect(thumb.height, lessThanOrEqualTo(16), reason: 'o$orientation');
+      }
+    });
+
+    test('thumbnails carry no camera metadata', () async {
+      // encodeJpg writes image.exif back out, so a camera-roll photo would
+      // otherwise leak GPS and camera tags into exported backup archives.
+      final source = img.Image(width: 64, height: 48);
+      img.fill(source, color: img.ColorRgb8(10, 20, 30));
+      source.exif.imageIfd['Model'] = img.IfdValueAscii('TestCam');
+      source.exif.gpsIfd['GPSLatitudeRef'] = img.IfdValueAscii('N');
+      final image = validator.validate(
+        Uint8List.fromList(img.encodeJpg(source)),
+      );
+      expect(
+        img.decodeJpg(image.bytes)!.exif.isEmpty,
+        isFalse,
+        reason: 'the original must keep its metadata',
+      );
+
+      final stored = await store.store(image);
+      final thumb = img.decodeJpg(
+        await store.resolve(stored.thumbnailPath).readAsBytes(),
+      )!;
+      expect(thumb.exif.isEmpty, isTrue);
+    });
   });
 
   test('staging is empty after a successful store', () async {

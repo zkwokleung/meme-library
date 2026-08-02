@@ -155,6 +155,120 @@ void main() {
     }
   });
 
+  group('EXIF orientation', () {
+    test('a rotated JPEG reports the dimensions it is displayed at', () {
+      // The SOF header says 800x600; orientation 6 asks for a quarter
+      // turn, and every consumer (the decoder, the thumbnail, Flutter's
+      // Image.file) shows 600x800.
+      for (final orientation in [5, 6, 7, 8]) {
+        final result = validator.validate(
+          rotatedJpegBytes(orientation: orientation, width: 800, height: 600),
+        );
+        expect(result.width, 600, reason: 'orientation $orientation');
+        expect(result.height, 800, reason: 'orientation $orientation');
+      }
+    });
+
+    test('an unrotated JPEG keeps its header dimensions', () {
+      for (final orientation in [1, 2, 3, 4]) {
+        final result = validator.validate(
+          rotatedJpegBytes(orientation: orientation, width: 800, height: 600),
+        );
+        expect(result.width, 800, reason: 'orientation $orientation');
+        expect(result.height, 600, reason: 'orientation $orientation');
+      }
+    });
+
+    test('animations keep the canvas dimensions from the header', () {
+      // An animation frame can be a sub-rect of the canvas, so a frame
+      // smaller than the header is not evidence of rotation.
+      final result = validator.validate(
+        animatedGifBytes(frames: 4, width: 16, height: 12),
+      );
+      expect(result.width, 16);
+      expect(result.height, 12);
+    });
+
+    test('a square rotated image is unambiguous', () {
+      final result = validator.validate(
+        rotatedJpegBytes(orientation: 6, width: 64, height: 64),
+      );
+      expect(result.width, 64);
+      expect(result.height, 64);
+    });
+  });
+
+  group('HEIF sniffing', () {
+    test('a major HEIC brand asks for conversion', () {
+      expect(
+        () => validator.validate(ftypBytes(majorBrand: 'heic')),
+        rejects(ImageRejection.needsConversion),
+      );
+    });
+
+    test('a HEIC brand in the compatible list asks for conversion', () {
+      expect(
+        () => validator.validate(
+          ftypBytes(majorBrand: 'mif1', compatibleBrands: const ['heic']),
+        ),
+        rejects(ImageRejection.needsConversion),
+      );
+    });
+
+    test('AVIF asks for conversion', () {
+      expect(
+        () => validator.validate(
+          ftypBytes(majorBrand: 'avif', compatibleBrands: const ['avif']),
+        ),
+        rejects(ImageRejection.needsConversion),
+      );
+    });
+
+    test('a non-HEIF ftyp box is merely unsupported', () {
+      expect(
+        () => validator.validate(
+          ftypBytes(majorBrand: 'mp42', compatibleBrands: const ['isom']),
+        ),
+        rejects(ImageRejection.unsupportedFormat),
+      );
+    });
+
+    test('a truncated ftyp box is unsupported, not a crash', () {
+      for (final length in [12, 15, 16, 17]) {
+        expect(
+          () => validator.validate(ftypBytes(truncateTo: length)),
+          rejects(
+            length < 16
+                ? ImageRejection.unsupportedFormat
+                : ImageRejection.needsConversion,
+          ),
+          reason: 'length $length',
+        );
+      }
+    });
+
+    test('an absurd declared box size terminates the brand scan', () {
+      // The declared length is attacker-controlled; the scan must be
+      // bounded by the buffer, not by what the file claims.
+      expect(
+        () => validator.validate(
+          ftypBytes(
+            majorBrand: 'mp42',
+            compatibleBrands: const ['isom'],
+            declaredSize: 0x7FFFFFFF,
+          ),
+        ),
+        rejects(ImageRejection.unsupportedFormat),
+      );
+    });
+
+    test('supported formats still sniff ahead of the ftyp check', () {
+      expect(validator.validate(pngBytes()).mimeType, 'image/png');
+      expect(validator.validate(staticGifBytes()).mimeType, 'image/gif');
+      expect(validator.validate(jpegBytes()).mimeType, 'image/jpeg');
+    });
+  });
+
   test('grayscale-plus-alpha PNGs report hasAlpha', () {
     final source = img.Image(width: 4, height: 4, numChannels: 2);
     final bytes = img.encodePng(source);

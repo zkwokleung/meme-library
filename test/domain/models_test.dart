@@ -51,6 +51,24 @@ void main() {
       expect(Meme.fromJson(meme.toJson()), meme);
     });
 
+    test('gallery provenance round-trips through JSON', () {
+      final json = _sampleMeme().toJson()
+        ..['sourceKind'] = MemeSourceKind.gallery.name
+        ..['sourceRef'] = 'IMG_1234.HEIC';
+      final restored = Meme.fromJson(json);
+      expect(restored.sourceKind, MemeSourceKind.gallery);
+      expect(restored.sourceRef, 'IMG_1234.HEIC');
+      expect(Meme.fromJson(restored.toJson()), restored);
+    });
+
+    test('an unrecognised source kind parses as unknown', () {
+      // A newer build may write a provenance value this one has never
+      // heard of; restoring must degrade, not throw.
+      final json = _sampleMeme().toJson()..['sourceKind'] = 'teleporter';
+      expect(Meme.fromJson(json).sourceKind, MemeSourceKind.unknown);
+      expect(MemeSourceKind.parse('gallery'), MemeSourceKind.gallery);
+    });
+
     test('copyWith can clear nullable fields', () {
       final cleared = _sampleMeme().copyWith(
         title: () => null,

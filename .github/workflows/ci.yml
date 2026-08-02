@@ -48,6 +48,33 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build apk --debug
+      # The photo picker is permission-free by design, and docs/privacy.md
+      # says so. Plugin updates can merge new <uses-permission> elements
+      # into the manifest silently, so assert rather than trust.
+      - name: Merged manifest declares no unexpected permissions
+        run: |
+          # The Flutter Android template redirects the Gradle build
+          # directory to the project root, so this is build/app/... not
+          # android/app/build/...
+          merged=build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+          if [ ! -f "$merged" ]; then
+            echo "::error::merged manifest not found at $merged"
+            find build -name AndroidManifest.xml -path '*merged_manifests*' || true
+            exit 1
+          fi
+          # INTERNET is ours. DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION is an
+          # app-scoped signature permission androidx injects for runtime
+          # receivers; it grants nothing to other apps.
+          unexpected=$(grep -o '<uses-permission[^>]*android:name="[^"]*"' "$merged" \
+            | sed 's/.*android:name="//; s/"$//' | sort -u \
+            | grep -vE '^android\.permission\.INTERNET$' \
+            | grep -vE '\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::unexpected permission in the merged manifest:"
+            echo "$unexpected"
+            exit 1
+          fi
+          echo "OK: no unexpected permissions."
 
   ios-simulator:
     name: iOS simulator build

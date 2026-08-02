@@ -1,5 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Sole network use: downloading an image from a user-typed URL. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Sole network use: downloading an image from a user-typed URL.
+         The photo picker (ACTION_PICK_IMAGES) needs no permission. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Meme Library"
@@ -46,6 +48,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"/>
         </provider>
+        <!-- image_picker_android merges in a Google Play services stub that
+             triggers installing the backported photo picker module. minSdk
+             is 35, where ACTION_PICK_IMAGES is always present, so the stub
+             is dead weight — and this app ships no third-party SDKs. -->
+        <service
+            android:name="com.google.android.gms.metadata.ModuleDependencies"
+            tools:node="remove" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

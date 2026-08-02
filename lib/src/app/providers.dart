@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../backup/backup_service.dart';
+import '../data/image_pipeline.dart';
 import '../data/library_repository.dart';
 import '../data/media_store.dart';
 import '../import/import_coordinator.dart';
@@ -22,11 +23,19 @@ final mediaStoreProvider = Provider<MediaStore>(
   (ref) => throw UnimplementedError('mediaStoreProvider must be overridden'),
 );
 
+/// Keeps image decoding, resizing, and hashing off the UI isolate. Tests
+/// override this with [InlineImagePipeline] so the work completes inside
+/// `flutter_test`'s fake-async zone.
+final imagePipelineProvider = Provider<ImagePipeline>(
+  (ref) => const IsolateImagePipeline(),
+);
+
 /// Import services, derived from the infrastructure above.
 final importCoordinatorProvider = Provider<ImportCoordinator>(
   (ref) => ImportCoordinator(
     repository: ref.watch(libraryRepositoryProvider),
     mediaStore: ref.watch(mediaStoreProvider),
+    pipeline: ref.watch(imagePipelineProvider),
   ),
 );
 
@@ -43,6 +52,13 @@ final clipboardImportServiceProvider = Provider<ClipboardImportService>(
 
 final shareImportServiceProvider = Provider<ShareImportService>(
   (ref) => ShareImportService(ref.watch(importCoordinatorProvider)),
+);
+
+final galleryImportServiceProvider = Provider<GalleryImportService>(
+  (ref) => GalleryImportService(
+    ref.watch(importCoordinatorProvider),
+    ref.watch(heicTranscoderProvider),
+  ),
 );
 
 /// Scratch directory for backup archives and restore staging.

@@ -3,7 +3,24 @@ import 'package:meta/meta.dart';
 import 'tag.dart';
 
 /// Where a meme entered the library.
-enum MemeSourceKind { clipboard, url, share, restore }
+enum MemeSourceKind {
+  clipboard,
+  url,
+  share,
+  restore,
+  gallery,
+
+  /// A provenance value written by a newer build of the app.
+  unknown;
+
+  /// Tolerant parse for persisted names.
+  ///
+  /// Provenance is display-only metadata, so an unrecognised name must
+  /// degrade rather than fail a restore or a query the way
+  /// `values.byName` does.
+  static MemeSourceKind parse(String name) =>
+      MemeSourceKind.values.asNameMap()[name] ?? MemeSourceKind.unknown;
+}
 
 /// A saved meme and its metadata. Immutable; use [copyWith] to derive
 /// updated instances.
@@ -45,8 +62,9 @@ class Meme {
 
   final MemeSourceKind sourceKind;
 
-  /// Source detail: the URL for [MemeSourceKind.url], a file name for
-  /// shares, absent otherwise.
+  /// Source detail: the URL for [MemeSourceKind.url], the gallery display
+  /// name for [MemeSourceKind.gallery], a file name for shares, absent
+  /// otherwise.
   final String? sourceRef;
 
   final String? title;
@@ -107,7 +125,7 @@ class Meme {
     sizeBytes: json['sizeBytes']! as int,
     relativePath: json['relativePath']! as String,
     thumbnailPath: json['thumbnailPath']! as String,
-    sourceKind: MemeSourceKind.values.byName(json['sourceKind']! as String),
+    sourceKind: MemeSourceKind.parse(json['sourceKind']! as String),
     sourceRef: json['sourceRef'] as String?,
     title: json['title'] as String?,
     notes: json['notes'] as String?,

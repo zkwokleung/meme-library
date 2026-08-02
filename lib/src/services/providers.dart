@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'platform/clipboard_service.dart';
+import 'platform/gallery_picker.dart';
 import 'platform/incoming_share_service.dart';
 import 'platform/share_service.dart';
 
@@ -22,4 +23,15 @@ final incomingShareServiceProvider = Provider<IncomingShareService>(
   (ref) => throw UnimplementedError(
     'incomingShareServiceProvider must be overridden',
   ),
+);
+
+/// Overridden per platform at startup: `PHPickerViewController` through the
+/// method channel on iOS, the `image_picker` plugin on Android.
+final galleryPickerProvider = Provider<GalleryPicker>(
+  (ref) => throw UnimplementedError('galleryPickerProvider must be overridden'),
+);
+
+final heicTranscoderProvider = Provider<HeicTranscoder>(
+  (ref) =>
+      throw UnimplementedError('heicTranscoderProvider must be overridden'),
 );

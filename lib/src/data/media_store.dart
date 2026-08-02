@@ -76,15 +76,25 @@ class MediaStore {
 
   Future<bool> exists(String relativePath) => resolve(relativePath).exists();
 
+  /// Longest edge of a generated thumbnail, in pixels.
+  int get thumbnailMaxDimension => _thumbnailMax;
+
   /// Stores a validated image and its thumbnail atomically.
   ///
   /// Both files are fully written to staging before either is moved into
   /// the library; any failure removes all staged and moved artifacts.
-  Future<StoredMedia> store(ValidatedImage image, {String? knownSha256}) async {
+  ///
+  /// Pass [thumbnail] to reuse an already-encoded thumbnail — the import
+  /// path produces one off the UI isolate — otherwise it is encoded here.
+  Future<StoredMedia> store(
+    ValidatedImage image, {
+    String? knownSha256,
+    EncodedThumbnail? thumbnail,
+  }) async {
     await init();
     final hash = knownSha256 ?? hashBytes(image.bytes);
     final originalName = '$hash.${image.fileExtension}';
-    final thumb = encodeThumbnail(image);
+    final thumb = thumbnail ?? encodeThumbnail(image);
     final thumbName = '${hash}_t.${thumb.extension}';
 
     final stagedOriginal = File(p.join(_staging.path, '$originalName.tmp'));
@@ -125,83 +135,11 @@ class MediaStore {
 
   /// Encodes a thumbnail for [image] without writing to the store.
   ///
-  /// The output format is a pure function of the source bytes so backup
-  /// restore can regenerate a thumbnail that matches its manifest name:
-  /// animated sources become small animated GIFs (grid tiles play them),
-  /// static sources with transparency (including GIF palette
-  /// transparency) become PNG, everything else JPEG.
-  EncodedThumbnail encodeThumbnail(ValidatedImage image) {
-    final decoded = img.decodeImage(image.bytes);
-    if (decoded == null) {
-      throw const MediaStoreException('Image could not be decoded');
-    }
-
-    if (image.isAnimated && decoded.numFrames > 1) {
-      return EncodedThumbnail(
-        bytes: _encodeAnimatedGifThumbnail(decoded),
-        extension: 'gif',
-      );
-    }
-
-    final resized = _resizeFrame(decoded);
-    final transparent = image.hasAlpha || image.fileExtension == 'gif';
-    return EncodedThumbnail(
-      bytes: transparent
-          ? img.encodePng(resized)
-          : img.encodeJpg(resized, quality: 82),
-      extension: transparent ? 'png' : 'jpg',
-    );
-  }
-
-  /// Downscaled animated GIF preserving timing and loop count, sampled
-  /// to at most [maxThumbnailFrames] frames.
-  Uint8List _encodeAnimatedGifThumbnail(img.Image decoded) {
-    final sourceFrames = decoded.frames;
-    final keepEvery = sourceFrames.length <= maxThumbnailFrames
-        ? 1
-        : sourceFrames.length / maxThumbnailFrames;
-
-    img.Image? animation;
-    var nextKept = 0.0;
-    var carriedDuration = 0;
-    for (var i = 0; i < sourceFrames.length; i++) {
-      final frame = sourceFrames[i];
-      if (i < nextKept.floor()) {
-        // Skipped frame: keep the wall-clock duration on the previous
-        // kept frame so playback speed is preserved.
-        carriedDuration += frame.frameDuration;
-        continue;
-      }
-      nextKept += keepEvery;
-
-      // Clone as a single frame first: copyResize on an animated image
-      // would resize the entire frame chain per call.
-      var single = img.Image.from(frame, noAnimation: true);
-      single = _resizeFrame(single);
-      single.frameDuration = frame.frameDuration + carriedDuration;
-      carriedDuration = 0;
-
-      if (animation == null) {
-        animation = single;
-        animation.loopCount = decoded.loopCount;
-      } else {
-        animation.addFrame(single);
-      }
-    }
-
-    return img.encodeGif(animation!, repeat: decoded.loopCount);
-  }
-
-  img.Image _resizeFrame(img.Image frame) {
-    final longest = frame.width > frame.height ? frame.width : frame.height;
-    if (longest <= _thumbnailMax) return frame;
-    return img.copyResize(
-      frame,
-      width: frame.width >= frame.height ? _thumbnailMax : null,
-      height: frame.height > frame.width ? _thumbnailMax : null,
-      interpolation: img.Interpolation.average,
-    );
-  }
+  /// Runs on the calling isolate; the import path uses
+  /// [encodeThumbnailSync] through an `ImagePipeline` instead so the decode
+  /// never blocks the UI.
+  EncodedThumbnail encodeThumbnail(ValidatedImage image) =>
+      encodeThumbnailSync(image, maxDimension: _thumbnailMax);
 
   /// Deletes the stored files for a meme. Missing files are ignored.
   Future<void> delete(String relativePath, String thumbnailPath) async {
@@ -241,4 +179,108 @@ class MediaStore {
       // Best effort; orphans are removed by reconciliation.
     }
   }
+}
+
+/// Encodes a thumbnail whose longest edge is at most [maxDimension].
+///
+/// Top-level, pure, and free of `dart:io` so it can run on a background
+/// isolate. The output format is a pure function of the source bytes so
+/// backup restore can regenerate a thumbnail that matches its manifest
+/// name: animated sources become small animated GIFs (grid tiles play
+/// them), static sources with transparency (including GIF palette
+/// transparency) become PNG, everything else JPEG.
+///
+/// Throws [MediaStoreException] with no `cause`, which stays sendable
+/// across an isolate boundary.
+EncodedThumbnail encodeThumbnailSync(
+  ValidatedImage image, {
+  required int maxDimension,
+}) {
+  final decoded = img.decodeImage(image.bytes);
+  if (decoded == null) {
+    throw const MediaStoreException('Image could not be decoded');
+  }
+
+  if (image.isAnimated && decoded.numFrames > 1) {
+    return EncodedThumbnail(
+      bytes: _encodeAnimatedGifThumbnail(decoded, maxDimension),
+      extension: 'gif',
+    );
+  }
+
+  final resized = _resizeFrame(decoded, maxDimension);
+  // encodeJpg writes image.exif back out, and the JPEG decoder carries
+  // every tag except orientation across. A camera-roll photo would put its
+  // GPS coordinates, camera model, and capture time into a thumbnail that
+  // ends up in exported backup archives. Thumbnails have no use for any of
+  // it. (encodePng and encodeGif write no EXIF.)
+  resized.exif = img.ExifData();
+  final transparent = image.hasAlpha || image.fileExtension == 'gif';
+  return EncodedThumbnail(
+    bytes: transparent
+        ? img.encodePng(resized)
+        : img.encodeJpg(resized, quality: 82),
+    extension: transparent ? 'png' : 'jpg',
+  );
+}
+
+/// Downscaled animated GIF preserving timing and loop count, sampled to at
+/// most [MediaStore.maxThumbnailFrames] frames.
+Uint8List _encodeAnimatedGifThumbnail(img.Image decoded, int maxDimension) {
+  final sourceFrames = decoded.frames;
+  final keepEvery = sourceFrames.length <= MediaStore.maxThumbnailFrames
+      ? 1
+      : sourceFrames.length / MediaStore.maxThumbnailFrames;
+
+  img.Image? animation;
+  var nextKept = 0.0;
+  var carriedDuration = 0;
+  for (var i = 0; i < sourceFrames.length; i++) {
+    final frame = sourceFrames[i];
+    if (i < nextKept.floor()) {
+      // Skipped frame: keep the wall-clock duration on the previous kept
+      // frame so playback speed is preserved.
+      carriedDuration += frame.frameDuration;
+      continue;
+    }
+    nextKept += keepEvery;
+
+    // Clone as a single frame first: copyResize on an animated image would
+    // resize the entire frame chain per call.
+    var single = img.Image.from(frame, noAnimation: true);
+    single = _resizeFrame(single, maxDimension);
+    single.frameDuration = frame.frameDuration + carriedDuration;
+    carriedDuration = 0;
+
+    if (animation == null) {
+      animation = single;
+      animation.loopCount = decoded.loopCount;
+    } else {
+      animation.addFrame(single);
+    }
+  }
+
+  return img.encodeGif(animation!, repeat: decoded.loopCount);
+}
+
+img.Image _resizeFrame(img.Image frame, int maxDimension) {
+  // Some decoders (WebP) report EXIF orientation without applying it, and
+  // the small-image path below skips copyResize, which would otherwise
+  // bake it. Bake first so the size budget is measured against the
+  // dimensions the thumbnail will actually have — measuring before the
+  // bake also picks the wrong resize axis and overshoots the budget.
+  final upright =
+      frame.exif.imageIfd.hasOrientation && frame.exif.imageIfd.orientation != 1
+      ? img.bakeOrientation(frame)
+      : frame;
+  final longest = upright.width > upright.height
+      ? upright.width
+      : upright.height;
+  if (longest <= maxDimension) return upright;
+  return img.copyResize(
+    upright,
+    width: upright.width >= upright.height ? maxDimension : null,
+    height: upright.height > upright.width ? maxDimension : null,
+    interpolation: img.Interpolation.average,
+  );
 }

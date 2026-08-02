@@ -22,6 +22,35 @@ Uint8List jpegBytes({int width = 8, int height = 8, int seed = 0}) {
   return img.encodeJpg(image);
 }
 
+/// A JPEG whose stored pixels are [width]x[height] but whose EXIF
+/// orientation tag asks for a quarter turn, the shape a phone camera
+/// writes for a portrait shot. Orientations 5-8 transpose; 1-4 do not.
+Uint8List rotatedJpegBytes({
+  int orientation = 6,
+  int width = 800,
+  int height = 600,
+  int seed = 0,
+}) {
+  final image = img.Image(width: width, height: height);
+  img.fill(
+    image,
+    color: img.ColorRgb8(seed % 256, (seed * 7) % 256, (seed * 13) % 256),
+  );
+  // A marker stripe down the left edge: after baking a 90 degree rotation
+  // it must land on a different edge, which is how tests tell a real bake
+  // from a dimension swap.
+  img.fillRect(
+    image,
+    x1: 0,
+    y1: 0,
+    x2: (width ~/ 8) - 1,
+    y2: height - 1,
+    color: img.ColorRgb8(255, 0, 0),
+  );
+  image.exif.imageIfd.orientation = orientation;
+  return img.encodeJpg(image);
+}
+
 /// A well-known valid 1x1 lossy WebP file.
 Uint8List webpBytes() => base64Decode(
   'UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=',
@@ -90,6 +119,29 @@ Uint8List animatedPngBytes({int frames = 3, int width = 8, int height = 8}) {
 
 /// Bytes with no recognizable image signature.
 Uint8List unknownFormatBytes() => Uint8List.fromList(List.filled(64, 42));
+
+/// An ISO-BMFF `ftyp` box header, the shape HEIC/HEIF and MP4 share.
+///
+/// Only the header matters: nothing decodes these bytes, they exist to
+/// exercise brand sniffing. [declaredSize] overrides the box length field
+/// so bound checks can be pinned.
+Uint8List ftypBytes({
+  String majorBrand = 'heic',
+  List<String> compatibleBrands = const ['mif1', 'heic'],
+  int? declaredSize,
+  int? truncateTo,
+}) {
+  final size = 16 + compatibleBrands.length * 4;
+  final b = Uint8List(size);
+  ByteData.sublistView(b).setUint32(0, declaredSize ?? size);
+  b.setRange(4, 8, 'ftyp'.codeUnits);
+  b.setRange(8, 12, majorBrand.codeUnits);
+  ByteData.sublistView(b).setUint32(12, 0); // minor version
+  for (var i = 0; i < compatibleBrands.length; i++) {
+    b.setRange(16 + i * 4, 20 + i * 4, compatibleBrands[i].codeUnits);
+  }
+  return truncateTo == null ? b : Uint8List.sublistView(b, 0, truncateTo);
+}
 
 /// A valid PNG with an `acTL` (APNG animation control) chunk inserted
 /// before IDAT declaring a single frame. The chunk CRC is bogus, but

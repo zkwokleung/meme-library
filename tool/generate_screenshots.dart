@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:meme_library/src/app/app.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/domain/meme.dart' as domain;
 import 'package:meme_library/src/features/detail/meme_detail_screen.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
@@ -168,6 +169,7 @@ Future<void> _generate(WidgetTester tester) async {
       final coordinator = ImportCoordinator(
         repository: harness.repository,
         mediaStore: harness.mediaStore,
+        pipeline: const InlineImagePipeline(),
       );
       for (var i = 0; i < titles.length; i++) {
         final outcome =

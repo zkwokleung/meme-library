@@ -624,7 +624,7 @@ class DriftLibraryRepository implements LibraryRepository {
     sizeBytes: row.sizeBytes,
     relativePath: row.relativePath,
     thumbnailPath: row.thumbnailPath,
-    sourceKind: MemeSourceKind.values.byName(row.sourceKind),
+    sourceKind: MemeSourceKind.parse(row.sourceKind),
     sourceRef: row.sourceRef,
     title: row.title,
     notes: row.notes,
