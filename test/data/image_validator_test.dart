@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:meme_library/src/data/image_validator.dart';
 
 import '../helpers/image_fixtures.dart';
@@ -90,5 +91,28 @@ void main() {
       () => tiny.validate(pngBytes(width: 4, height: 4)),
       rejects(ImageRejection.tooManyPixels),
     );
+  });
+
+  test('WebP animation scan stays in bounds near the 1 KB boundary', () {
+    // Regression guard: files of exactly 1024-1026 bytes used to read
+    // past the end of the buffer.
+    for (final length in [1023, 1024, 1025, 1026, 1027]) {
+      final bytes = Uint8List(length);
+      bytes.setRange(0, 4, 'RIFF'.codeUnits);
+      bytes.setRange(8, 12, 'WEBP'.codeUnits);
+      // Not a decodable WebP; must fail as corrupt, never as RangeError.
+      expect(
+        () => validator.validate(bytes),
+        rejects(ImageRejection.corrupt),
+        reason: 'length $length',
+      );
+    }
+  });
+
+  test('grayscale-plus-alpha PNGs report hasAlpha', () {
+    final source = img.Image(width: 4, height: 4, numChannels: 2);
+    final bytes = img.encodePng(source);
+    final result = validator.validate(Uint8List.fromList(bytes));
+    expect(result.hasAlpha, isTrue);
   });
 }

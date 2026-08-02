@@ -187,6 +187,9 @@ void main() {
     expect(await search('distr'), hasLength(1));
     // Hostile input does not crash FTS.
     expect(await search('"unbalanced OR (fts:'), isA<List<String>>());
+    // Punctuation-only tokens would produce empty FTS phrases.
+    expect(await search('???'), isEmpty);
+    expect(await search('… - !!'), isEmpty);
   });
 
   test('search reflects metadata and tag edits', () async {
@@ -230,6 +233,33 @@ void main() {
     final a = await repo.ensureTag('alpha');
     await repo.ensureTag('beta');
     await expectLater(repo.renameTag(a.id, ' BETA '), throwsStateError);
+  });
+
+  test('renameTag rejects a tag that no longer exists', () async {
+    final tag = await repo.ensureTag('ghost');
+    await repo.deleteTag(tag.id);
+    await expectLater(repo.renameTag(tag.id, 'spirit'), throwsStateError);
+  });
+
+  test('insert failure resolves to the winner when the hash exists', () async {
+    // Simulates losing a duplicate-content race after the pre-check: the
+    // second record has the same sha256 (unique-constraint violation) and
+    // hash-keyed files shared with the winner. Those files must survive.
+    final winner = await repo.insertMeme(await stagedMeme(seed: 80));
+    final loser = (await stagedMeme(seed: 80)).copyWith();
+
+    await expectLater(
+      repo.insertMeme(loser),
+      throwsA(
+        isA<DuplicateMemeException>().having(
+          (e) => e.existing.id,
+          'existing.id',
+          winner.id,
+        ),
+      ),
+    );
+    expect(await media.exists(winner.relativePath), isTrue);
+    expect(await media.exists(winner.thumbnailPath), isTrue);
   });
 
   test('ensureTag reuses existing tags case-insensitively', () async {

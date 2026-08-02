@@ -76,6 +76,9 @@ void main() {
   });
 
   test('paged browsing queries stay fast at 10k items', () async {
+    // Warm up statement preparation for this query shape.
+    await repo.query(const LibraryQuery(limit: 60, offset: 0));
+
     final stopwatch = Stopwatch()..start();
     final page = await repo.query(const LibraryQuery(limit: 60, offset: 5000));
     stopwatch.stop();

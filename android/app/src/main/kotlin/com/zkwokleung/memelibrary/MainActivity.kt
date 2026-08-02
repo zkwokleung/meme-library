@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,8 +17,12 @@ import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     companion object {
+        private const val TAG = "MemeLibrary"
         private const val METHOD_CHANNEL = "com.zkwokleung.memelibrary/platform"
         private const val EVENT_CHANNEL = "com.zkwokleung.memelibrary/incoming_shares"
+
+        /** Mirrors ImageValidator.defaultMaxFileSizeBytes on the Dart side. */
+        private const val MAX_IMPORT_BYTES = 25L * 1024 * 1024
     }
 
     /** Shares received before the Dart side asked for them (cold start). */
@@ -26,11 +31,21 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleShareIntent(intent)
+        // Orphans from a previous process that died before Dart consumed
+        // its staged shares.
+        File(cacheDir, "incoming_shares").listFiles()?.forEach { it.delete() }
+        // Only a fresh launch carries a new share; a recreation would
+        // re-deliver an intent that was already handled.
+        if (savedInstanceState == null) {
+            handleShareIntent(intent)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Keep getIntent() current so a later recreation does not replay
+        // the original launch intent.
+        setIntent(intent)
         handleShareIntent(intent)
     }
 
@@ -102,11 +117,19 @@ class MainActivity : FlutterActivity() {
         return try {
             val dir = File(cacheDir, "incoming_shares").apply { mkdirs() }
             val target = File(dir, UUID.randomUUID().toString())
-            contentResolver.openInputStream(uri)?.use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
+            val copied = contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { output ->
+                    copyCapped(input, output)
+                }
             } ?: return null
+            if (!copied) {
+                target.delete()
+                Log.w(TAG, "Dropped shared content over the size limit: $uri")
+                return null
+            }
             mapOf("path" to target.absolutePath, "mimeType" to contentResolver.getType(uri))
         } catch (e: Exception) {
+            Log.w(TAG, "Could not stage shared content: $uri", e)
             null
         }
     }
@@ -117,14 +140,38 @@ class MainActivity : FlutterActivity() {
         for (i in 0 until clip.itemCount) {
             val uri = clip.getItemAt(i).uri ?: continue
             try {
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: continue
-                if (bytes.isEmpty()) continue
-                return mapOf("bytes" to bytes, "name" to uri.lastPathSegment)
+                // Only image content, and never more than the validator
+                // would accept: reading an arbitrary copied file into the
+                // heap can OOM the app.
+                val mime = contentResolver.getType(uri)
+                if (mime != null && !mime.startsWith("image/")) continue
+                val buffer = java.io.ByteArrayOutputStream()
+                val complete = contentResolver.openInputStream(uri)?.use { input ->
+                    copyCapped(input, buffer)
+                } ?: continue
+                if (!complete || buffer.size() == 0) continue
+                return mapOf("bytes" to buffer.toByteArray(), "name" to uri.lastPathSegment)
             } catch (e: Exception) {
                 // Try the next clip item.
             }
         }
         return null
+    }
+
+    /**
+     * Copies [input] to [output] up to [MAX_IMPORT_BYTES]; returns false
+     * when the source exceeds the cap.
+     */
+    private fun copyCapped(input: java.io.InputStream, output: java.io.OutputStream): Boolean {
+        val chunk = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val read = input.read(chunk)
+            if (read < 0) return true
+            total += read
+            if (total > MAX_IMPORT_BYTES) return false
+            output.write(chunk, 0, read)
+        }
     }
 
     /**

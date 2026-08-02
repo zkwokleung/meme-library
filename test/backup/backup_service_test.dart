@@ -247,6 +247,38 @@ void main() {
       await expectLibraryUntouched(survivor);
     });
 
+    test('rejects manifests with traversal or absolute media paths', () async {
+      final survivor = await seedMeme(38);
+
+      Future<void> expectRejected(String relativePath) async {
+        final meme = (await harness.repository.query(
+          const LibraryQuery(limit: 1),
+        )).items.single;
+        final json = meme.toJson()..['relativePath'] = relativePath;
+        final zip = await buildArchive({
+          'manifest.json': utf8.encode(
+            jsonEncode({
+              'version': 1,
+              'memes': [json],
+            }),
+          ),
+        }, name: 'slip.zip');
+
+        await expectLater(
+          service.restoreArchive(zip),
+          failsWith(BackupErrorReason.malformedManifest),
+          reason: relativePath,
+        );
+      }
+
+      await expectRejected('../../escape.png');
+      await expectRejected('originals/../../escape.png');
+      await expectRejected('/etc/passwd');
+      await expectRejected(r'C:\Windows\escape.png');
+      await expectRejected('thumbs/wrong-root.png');
+      await expectLibraryUntouched(survivor);
+    });
+
     test('rejects a malformed manifest', () async {
       final survivor = await seedMeme(33);
       final zip = await buildArchive({

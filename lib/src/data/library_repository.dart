@@ -72,6 +72,9 @@ abstract interface class LibraryRepository {
   /// the previous contents are untouched.
   Future<void> replaceAll(List<Meme> memes);
 
+  /// Every media-root-relative path currently referenced by a record.
+  Future<Set<String>> referencedMediaPaths();
+
   /// Removes files without records and records without files.
   Future<ReconcileReport> reconcile();
 
@@ -215,6 +218,13 @@ class DriftLibraryRepository implements LibraryRepository {
         return stored;
       });
     } catch (e) {
+      // A concurrent import of identical content may have won the race
+      // after our pre-check. The files are hash-keyed and shared with the
+      // winner, so they must NOT be deleted in that case.
+      final winner = await memeBySha256(meme.sha256);
+      if (winner != null && winner.id != meme.id) {
+        throw DuplicateMemeException(winner);
+      }
       // The record failed to persist; remove the already-stored files so
       // the library never references half-imported content.
       await _media.delete(meme.relativePath, meme.thumbnailPath);
@@ -324,12 +334,16 @@ class DriftLibraryRepository implements LibraryRepository {
       if (clash != null) {
         throw StateError('A tag named "$newName" already exists');
       }
-      await (_db.update(_db.tags)..where((t) => t.id.equals(id))).write(
-        TagsCompanion(
-          name: Value(newName.trim()),
-          normalizedName: Value(normalized),
-        ),
-      );
+      final updatedRows =
+          await (_db.update(_db.tags)..where((t) => t.id.equals(id))).write(
+            TagsCompanion(
+              name: Value(newName.trim()),
+              normalizedName: Value(normalized),
+            ),
+          );
+      if (updatedRows == 0) {
+        throw StateError('The tag no longer exists');
+      }
       await _refreshFtsForTag(id);
       return domain.Tag(id: id, name: newName.trim());
     });
@@ -399,9 +413,17 @@ class DriftLibraryRepository implements LibraryRepository {
   }
 
   @override
-  Future<ReconcileReport> reconcile() async {
-    await _media.clearStaging();
+  Future<Set<String>> referencedMediaPaths() async {
+    final rows = await _db.select(_db.memes).get();
+    return {
+      for (final row in rows) ...[row.relativePath, row.thumbnailPath],
+    };
+  }
 
+  @override
+  Future<ReconcileReport> reconcile() async {
+    // Staging is deliberately NOT cleared here: an import may be mid-write
+    // in staging while reconciliation runs. Startup clears staging instead.
     final rows = await _db.select(_db.memes).get();
     final referenced = <String>{};
     var removedRecords = 0;
@@ -505,28 +527,37 @@ class DriftLibraryRepository implements LibraryRepository {
     return tag;
   }
 
+  /// Chunked to stay far below SQLite's bound-variable limit even when
+  /// called with every meme id (e.g. from [rebuildSearchIndex]).
   Future<Map<String, List<domain.Tag>>> _tagsFor(List<String> memeIds) async {
     if (memeIds.isEmpty) return const {};
-    final placeholders = List.filled(memeIds.length, '?').join(', ');
-    final rows = await _db
-        .customSelect(
-          'SELECT mt.meme_id AS meme_id, t.id AS id, t.name AS name '
-          'FROM meme_tags mt JOIN tags t ON t.id = mt.tag_id '
-          'WHERE mt.meme_id IN ($placeholders) '
-          'ORDER BY t.normalized_name',
-          variables: [for (final id in memeIds) Variable(id)],
-        )
-        .get();
+    const chunkSize = 500;
     final result = <String, List<domain.Tag>>{};
-    for (final row in rows) {
-      result
-          .putIfAbsent(row.read<String>('meme_id'), () => [])
-          .add(
-            domain.Tag(
-              id: row.read<String>('id'),
-              name: row.read<String>('name'),
-            ),
-          );
+    for (var start = 0; start < memeIds.length; start += chunkSize) {
+      final chunk = memeIds.sublist(
+        start,
+        start + chunkSize > memeIds.length ? memeIds.length : start + chunkSize,
+      );
+      final placeholders = List.filled(chunk.length, '?').join(', ');
+      final rows = await _db
+          .customSelect(
+            'SELECT mt.meme_id AS meme_id, t.id AS id, t.name AS name '
+            'FROM meme_tags mt JOIN tags t ON t.id = mt.tag_id '
+            'WHERE mt.meme_id IN ($placeholders) '
+            'ORDER BY t.normalized_name',
+            variables: [for (final id in chunk) Variable(id)],
+          )
+          .get();
+      for (final row in rows) {
+        result
+            .putIfAbsent(row.read<String>('meme_id'), () => [])
+            .add(
+              domain.Tag(
+                id: row.read<String>('id'),
+                name: row.read<String>('name'),
+              ),
+            );
+      }
     }
     return result;
   }
@@ -572,12 +603,13 @@ class DriftLibraryRepository implements LibraryRepository {
   }
 
   /// Builds a safe FTS5 prefix-match expression from user text, or `null`
-  /// when the text contains no indexable tokens.
+  /// when the text contains no indexable tokens (punctuation-only tokens
+  /// would otherwise produce empty phrases that FTS5 rejects).
   String? _ftsMatchExpression(String raw) {
     final tokens = raw
         .replaceAll(RegExp('["*]'), ' ')
         .split(RegExp(r'\s+'))
-        .where((t) => t.isNotEmpty)
+        .where((t) => RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(t))
         .toList();
     if (tokens.isEmpty) return null;
     return tokens.map((t) => '"$t"*').join(' ');

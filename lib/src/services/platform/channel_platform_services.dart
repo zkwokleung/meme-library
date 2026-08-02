@@ -69,7 +69,7 @@ class ChannelIncomingShareService implements IncomingShareService {
 
   static List<IncomingSharedFile> _parse(List<Object?>? raw) => [
     for (final entry in raw ?? const <Object?>[])
-      if (entry is Map)
+      if (entry is Map && entry['path'] is String)
         IncomingSharedFile(
           path: entry['path']! as String,
           mimeType: entry['mimeType'] as String?,

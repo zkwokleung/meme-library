@@ -82,17 +82,40 @@ class ImageValidator {
       _Format.webp => img.WebPDecoder(),
     };
 
-    final decoded = decoder.decode(bytes);
-    if (decoded == null) {
+    // Check the declared dimensions from the header BEFORE rasterizing:
+    // a tiny compressed file can declare a huge canvas (decompression
+    // bomb) and the allocation itself would take the app down.
+    final img.DecodeInfo? info;
+    final img.Image? decoded;
+    try {
+      info = decoder.startDecode(bytes);
+      if (info == null) {
+        throw const ImageValidationException(
+          ImageRejection.corrupt,
+          'Image data could not be decoded',
+        );
+      }
+      if (info.width * info.height > maxPixels) {
+        throw ImageValidationException(
+          ImageRejection.tooManyPixels,
+          'Image is ${info.width}x${info.height}; pixel limit is $maxPixels',
+        );
+      }
+      decoded = decoder.decode(bytes);
+    } on ImageValidationException {
+      rethrow;
+    } catch (_) {
+      // The decoder throws (rather than returning null) on some
+      // malformed inputs.
       throw const ImageValidationException(
         ImageRejection.corrupt,
         'Image data could not be decoded',
       );
     }
-    if (decoded.width * decoded.height > maxPixels) {
-      throw ImageValidationException(
-        ImageRejection.tooManyPixels,
-        'Image is ${decoded.width}x${decoded.height}; pixel limit is $maxPixels',
+    if (decoded == null) {
+      throw const ImageValidationException(
+        ImageRejection.corrupt,
+        'Image data could not be decoded',
       );
     }
 
@@ -110,7 +133,8 @@ class ImageValidator {
       },
       width: decoded.width,
       height: decoded.height,
-      hasAlpha: decoded.numChannels == 4,
+      // 4 = RGBA; 2 = grayscale + alpha (PNG color type 4).
+      hasAlpha: decoded.numChannels == 4 || decoded.numChannels == 2,
     );
   }
 
@@ -185,8 +209,9 @@ class ImageValidator {
     if (b.length < 21) return false;
     final fourCc = String.fromCharCodes(b.sublist(12, 16));
     if (fourCc == 'VP8X' && (b[20] & 0x02) != 0) return true;
-    // Defensive scan for ANIM chunk in the first kilobyte.
-    final limit = b.length < 1024 ? b.length - 4 : 1024;
+    // Defensive scan for ANIM chunk in the first kilobyte. The bound
+    // keeps i+3 in range for files of any length.
+    final limit = (b.length < 1024 ? b.length : 1024) - 3;
     for (var i = 12; i < limit; i++) {
       if (b[i] == 0x41 &&
           b[i + 1] == 0x4E &&

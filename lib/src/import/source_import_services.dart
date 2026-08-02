@@ -55,9 +55,8 @@ class ShareImportService {
           await _coordinator.importBytes(
             bytes,
             sourceKind: MemeSourceKind.share,
-            sourceRef: file.uri.pathSegments.isNotEmpty
-                ? file.uri.pathSegments.last
-                : null,
+            // No sourceRef: the staged file name is a random UUID from
+            // the native side, not meaningful provenance.
           ),
         );
       } on FileSystemException {

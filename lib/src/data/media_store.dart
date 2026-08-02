@@ -80,13 +80,19 @@ class MediaStore {
 
     try {
       await stagedOriginal.writeAsBytes(image.bytes, flush: true);
-      await stagedThumb.writeAsBytes(_encodeThumbnail(image), flush: true);
+      await stagedThumb.writeAsBytes(encodeThumbnail(image), flush: true);
 
+      // Hash-keyed names mean an existing destination holds identical
+      // content (e.g. a concurrent import of the same image); it must
+      // survive our rollback.
+      final originalExisted = await finalOriginal.exists();
       await stagedOriginal.rename(finalOriginal.path);
       try {
         await stagedThumb.rename(finalThumb.path);
       } catch (e) {
-        await _deleteIfExists(finalOriginal);
+        if (!originalExisted) {
+          await _deleteIfExists(finalOriginal);
+        }
         rethrow;
       }
     } catch (e) {
@@ -103,7 +109,8 @@ class MediaStore {
     );
   }
 
-  Uint8List _encodeThumbnail(ValidatedImage image) {
+  /// Encodes a thumbnail for [image] without writing to the store.
+  Uint8List encodeThumbnail(ValidatedImage image) {
     final decoded = img.decodeImage(image.bytes);
     if (decoded == null) {
       throw const MediaStoreException('Image could not be decoded');

@@ -8,6 +8,11 @@
 build/
 coverage/
 
+# Signing material must never be committed, wherever it lands.
+*.keystore
+*.jks
+key.properties
+
 android/.gradle/
 ios/Flutter/ephemeral/
 ios/Pods/

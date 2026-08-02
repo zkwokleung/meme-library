@@ -132,6 +132,10 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
   public func onListen(withArguments arguments: Any?,
                        eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     eventSink = events
+    // A re-subscribe (hot restart) must not leak the previous observer.
+    if let observer {
+      NotificationCenter.default.removeObserver(observer)
+    }
     observer = NotificationCenter.default.addObserver(
       forName: UIApplication.didBecomeActiveNotification,
       object: nil,

@@ -52,30 +52,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<String?> _promptForUrl() {
-    final controller = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save from link'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(hintText: 'https://…'),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (context) => const _UrlPromptDialog(),
     );
   }
 
@@ -127,21 +106,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   void _deleteWithUndo(Meme meme) {
-    ref.read(libraryControllerProvider.notifier).deleteWithUndo(meme);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('Meme deleted'),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () => ref
-                .read(libraryControllerProvider.notifier)
-                .undoDelete(meme.id),
-          ),
-        ),
-      );
+    deleteMemeWithUndo(
+      ScaffoldMessenger.of(context),
+      ref.read(libraryControllerProvider.notifier),
+      meme,
+    );
   }
 
   void _openQuickActions(Meme meme) {
@@ -465,6 +434,30 @@ class _NoMatches extends StatelessWidget {
   }
 }
 
+/// Hides [meme], schedules its deletion, and offers Undo for the whole
+/// deletion window. Shared by the grid and the detail screen.
+void deleteMemeWithUndo(
+  ScaffoldMessengerState messenger,
+  LibraryController controller,
+  Meme meme,
+) {
+  const undoWindow = Duration(seconds: 5);
+  controller.deleteWithUndo(meme, undoWindow: undoWindow);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: const Text('Meme deleted'),
+        behavior: SnackBarBehavior.floating,
+        duration: undoWindow,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => controller.undoDelete(meme.id),
+        ),
+      ),
+    );
+}
+
 /// Copies the original image to the clipboard, falling back to the share
 /// sheet when the platform cannot host image data.
 Future<void> copyMemeToClipboard(
@@ -472,9 +465,12 @@ Future<void> copyMemeToClipboard(
   WidgetRef ref,
   Meme meme,
 ) async {
+  // Read everything up front: `ref` must not be touched after an await
+  // (the calling widget may be disposed by then).
   final messenger = ScaffoldMessenger.of(context);
   final media = ref.read(mediaStoreProvider);
   final clipboard = ref.read(clipboardServiceProvider);
+  final share = ref.read(shareServiceProvider);
   try {
     final bytes = await media.resolve(meme.relativePath).readAsBytes();
     final name = meme.relativePath.split('/').last;
@@ -491,7 +487,10 @@ Future<void> copyMemeToClipboard(
           ),
         );
     } else {
-      await shareMeme(ref, meme);
+      await share.shareFile(
+        media.resolve(meme.relativePath).path,
+        mimeType: meme.mimeType,
+      );
     }
   } on FileSystemException {
     messenger
@@ -513,4 +512,47 @@ Future<void> shareMeme(WidgetRef ref, Meme meme) {
         media.resolve(meme.relativePath).path,
         mimeType: meme.mimeType,
       );
+}
+
+/// Owns its text controller so it is disposed with the dialog.
+class _UrlPromptDialog extends StatefulWidget {
+  const _UrlPromptDialog();
+
+  @override
+  State<_UrlPromptDialog> createState() => _UrlPromptDialogState();
+}
+
+class _UrlPromptDialogState extends State<_UrlPromptDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Save from link'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(hintText: 'https://…'),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }

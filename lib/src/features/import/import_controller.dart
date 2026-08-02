@@ -65,9 +65,11 @@ class ImportController {
   final Ref _ref;
   final _feedback = StreamController<ImportFeedback>.broadcast();
   StreamSubscription<Object?>? _sharesSubscription;
-  bool _importing = false;
 
-  bool get isImporting => _importing;
+  /// Concurrent imports in flight (a share can arrive mid-URL-import).
+  int _activeImports = 0;
+
+  bool get isImporting => _activeImports > 0;
 
   Future<ImportFeedback> importFromClipboard() => _run(() async {
     final outcome = await _ref
@@ -84,13 +86,27 @@ class ImportController {
   });
 
   /// Starts listening for shares from other apps (cold and warm starts).
+  ///
+  /// Subscribing before draining the initial shares is load-bearing on
+  /// Android: the event channel's `onListen` reaches the platform first
+  /// and flushes `pendingShares`, so `takeInitialShares` cannot hand the
+  /// same batch out twice.
   Future<void> bindIncomingShares() async {
     final incoming = _ref.read(incomingShareServiceProvider);
-    _sharesSubscription ??= incoming.incomingShares.listen((files) {
-      if (files.isNotEmpty) unawaited(_importShared(files));
-    });
-    final initial = await incoming.takeInitialShares();
-    if (initial.isNotEmpty) await _importShared(initial);
+    _sharesSubscription ??= incoming.incomingShares.listen(
+      (files) {
+        if (files.isNotEmpty) unawaited(_importShared(files));
+      },
+      // A platform error must not become an unhandled zone error.
+      onError: (Object _) {},
+    );
+    try {
+      final initial = await incoming.takeInitialShares();
+      if (initial.isNotEmpty) await _importShared(initial);
+    } on Exception {
+      // A missing channel implementation (tests, unsupported platforms)
+      // simply means no incoming shares.
+    }
   }
 
   Future<void> _importShared(List<IncomingSharedFile> files) => _run(() async {
@@ -101,13 +117,13 @@ class ImportController {
   Future<ImportFeedback> _run(
     Future<List<ImportOutcome>> Function() body,
   ) async {
-    _importing = true;
+    _activeImports++;
     try {
       final feedback = ImportFeedback.fromOutcomes(await body());
-      _feedback.add(feedback);
+      if (!_feedback.isClosed) _feedback.add(feedback);
       return feedback;
     } finally {
-      _importing = false;
+      _activeImports--;
     }
   }
 

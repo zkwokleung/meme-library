@@ -102,11 +102,10 @@ class BackupService {
 
     final encoder = ZipFileEncoder();
     encoder.create(zipFile.path);
+    final manifestFile = File(p.join(_work.path, 'manifest.json'));
     try {
-      final manifestFile = File(p.join(_work.path, 'manifest.json'));
       await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
       await encoder.addFile(manifestFile, 'manifest.json');
-      await manifestFile.delete();
 
       var done = 0;
       for (final meme in memes) {
@@ -128,6 +127,10 @@ class BackupService {
       await encoder.close();
       if (await zipFile.exists()) await zipFile.delete();
       rethrow;
+    } finally {
+      // The manifest holds the full plaintext metadata of the library;
+      // never leave it behind in the work directory.
+      if (await manifestFile.exists()) await manifestFile.delete();
     }
     await encoder.close();
     return zipFile;
@@ -239,7 +242,34 @@ class BackupService {
         'The backup manifest is damaged.',
       );
     }
+    // Reject path traversal (zip-slip): manifest paths are attacker
+    // input and are later joined onto staging and the live media root.
+    for (final meme in memes) {
+      _requireSafeRelativePath(meme.relativePath, 'originals');
+      _requireSafeRelativePath(meme.thumbnailPath, 'thumbs');
+    }
     return (manifest, memes);
+  }
+
+  /// Throws unless [path] is a plain relative POSIX path rooted in
+  /// [requiredRoot] with no traversal segments, drive letters, or
+  /// backslashes.
+  static void _requireSafeRelativePath(String path, String requiredRoot) {
+    final parts = p.posix.split(p.posix.normalize(path));
+    final unsafe =
+        path.contains('\\') ||
+        path.contains(':') ||
+        p.isAbsolute(path) ||
+        p.posix.isAbsolute(path) ||
+        parts.length < 2 ||
+        parts.first != requiredRoot ||
+        parts.any((part) => part == '..' || part == '.' || part.isEmpty);
+    if (unsafe) {
+      throw const BackupException(
+        BackupErrorReason.malformedManifest,
+        'The backup manifest contains an invalid media path.',
+      );
+    }
   }
 
   /// Extracts every referenced media file into [staging], verifying the
@@ -265,9 +295,7 @@ class BackupService {
         }
         final target = File(p.join(staging.path, meme.relativePath));
         await target.parent.create(recursive: true);
-        final out = OutputFileStream(target.path);
-        entry.writeContent(out);
-        await out.close();
+        await _extractEntry(entry, target);
 
         final digest = await sha256.bind(target.openRead()).first;
         if (digest.toString() != meme.sha256) {
@@ -283,9 +311,7 @@ class BackupService {
         final thumbTarget = File(p.join(staging.path, meme.thumbnailPath));
         await thumbTarget.parent.create(recursive: true);
         if (thumbEntry != null) {
-          final thumbOut = OutputFileStream(thumbTarget.path);
-          thumbEntry.writeContent(thumbOut);
-          await thumbOut.close();
+          await _extractEntry(thumbEntry, thumbTarget);
         } else {
           await _regenerateThumbnail(target, thumbTarget);
         }
@@ -296,19 +322,28 @@ class BackupService {
     }
   }
 
+  /// Streams a zip entry to [target], closing the sink on failure so the
+  /// staging directory can always be deleted afterwards.
+  static Future<void> _extractEntry(ArchiveFile entry, File target) async {
+    final out = OutputFileStream(target.path);
+    try {
+      entry.writeContent(out);
+    } finally {
+      await out.close();
+    }
+  }
+
+  /// Rebuilds a thumbnail directly into staging. Must never touch the
+  /// live media store: staging runs before the point of no return.
   Future<void> _regenerateThumbnail(File original, File thumbTarget) async {
     try {
       final validated = const ImageValidator().validate(
         await original.readAsBytes(),
       );
-      final stored = await _media.store(validated);
-      // store() placed it in the live media tree already; move it into
-      // staging so apply treats it uniformly.
-      final liveThumb = _media.resolve(stored.thumbnailPath);
-      if (await liveThumb.exists()) {
-        await liveThumb.copy(thumbTarget.path);
-      }
-      await _media.delete(stored.relativePath, stored.thumbnailPath);
+      await thumbTarget.writeAsBytes(
+        _media.encodeThumbnail(validated),
+        flush: true,
+      );
     } catch (_) {
       // A meme without a thumbnail still renders from the original.
     }
@@ -326,10 +361,21 @@ class BackupService {
     try {
       await _repository.replaceAll(memes);
     } catch (e) {
-      await _repository.reconcile();
+      // Remove only the files this restore moved in and that no existing
+      // record references. A full reconcile here could purge unrelated
+      // records whose files were already broken before the restore.
+      final referenced = await _repository.referencedMediaPaths();
+      for (final meme in memes) {
+        for (final path in [meme.relativePath, meme.thumbnailPath]) {
+          if (!referenced.contains(path)) {
+            await _media.delete(path, path);
+          }
+        }
+      }
       throw BackupException(
         BackupErrorReason.applyFailed,
-        'The library could not be replaced. Nothing was changed.',
+        'The library could not be replaced ($e). '
+        'Your current memes were not changed.',
       );
     }
 

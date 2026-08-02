@@ -70,8 +70,11 @@ class LibraryController extends AsyncNotifier<LibraryState> {
       subscription.cancel();
       _searchDebounce?.cancel();
       _changeDebounce?.cancel();
-      for (final timer in _pendingDeletes.values) {
-        timer.cancel();
+      // The UI already reported these memes as deleted; commit rather
+      // than silently resurrect them on next launch.
+      for (final entry in _pendingDeletes.entries) {
+        entry.value.cancel();
+        unawaited(repository.deleteMeme(entry.key));
       }
       _pendingDeletes.clear();
     });
@@ -100,14 +103,25 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     );
   }
 
-  /// Re-runs the current query, keeping the scroll window size.
+  /// Re-runs the current query, keeping the scroll window size (plus
+  /// room for hidden pending deletions).
   Future<void> _reload() async {
     final current = state.value;
     if (current == null) return;
     final generation = ++_generation;
-    final next = await _fetch(current, minimumItems: current.items.length);
-    if (generation == _generation) {
+    try {
+      final next = await _fetch(
+        current,
+        minimumItems: current.items.length + _pendingDeletes.length,
+      );
+      if (!ref.mounted || generation != _generation) return;
       state = AsyncData(next);
+    } catch (e, stackTrace) {
+      // Keep showing the previous data; surface the error only when
+      // there is nothing to show.
+      if (ref.mounted && state.value == null) {
+        state = AsyncError(e, stackTrace);
+      }
     }
   }
 
@@ -115,31 +129,53 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     final current = state.value;
     if (current == null || current.loadingMore || !current.hasMore) return;
     state = AsyncData(current.copyWith(loadingMore: true));
-    final generation = ++_generation;
+    // Participate in the current generation without claiming a new one:
+    // a filter change mid-flight must win, not be cancelled by paging.
+    final generation = _generation;
 
-    final repository = ref.read(libraryRepositoryProvider);
-    final page = await repository.query(
-      LibraryQuery(
-        searchText: current.searchText.isEmpty ? null : current.searchText,
-        tagIds: current.tagIds,
-        limit: pageSize,
-        offset: current.items.length,
-      ),
-    );
-    if (generation != _generation) return;
+    try {
+      final page = await ref
+          .read(libraryRepositoryProvider)
+          .query(
+            LibraryQuery(
+              searchText: current.searchText.isEmpty
+                  ? null
+                  : current.searchText,
+              tagIds: current.tagIds,
+              limit: pageSize,
+              offset: current.items.length,
+            ),
+          );
+      if (!ref.mounted || generation != _generation) return;
 
-    final incoming = page.items.where(
-      (m) =>
-          !_pendingDeletes.containsKey(m.id) &&
-          !current.items.any((existing) => existing.id == m.id),
-    );
-    state = AsyncData(
-      current.copyWith(
-        items: [...current.items, ...incoming],
-        totalCount: page.totalCount,
-        loadingMore: false,
-      ),
-    );
+      // Re-read the state: a synchronous mutation (deleteWithUndo) may
+      // have changed it while the query ran.
+      final latest = state.value;
+      if (latest == null) return;
+      final incoming = page.items.where(
+        (m) =>
+            !_pendingDeletes.containsKey(m.id) &&
+            !latest.items.any((existing) => existing.id == m.id),
+      );
+      final items = [...latest.items, ...incoming];
+      // An empty page means the count and reality disagree (e.g. hidden
+      // pending deletions); stop paging rather than spin forever.
+      final total = page.items.isEmpty
+          ? items.length
+          : (page.totalCount - _pendingDeletes.length).clamp(
+              items.length,
+              1 << 30,
+            );
+      state = AsyncData(
+        latest.copyWith(items: items, totalCount: total, loadingMore: false),
+      );
+    } catch (_) {
+      if (!ref.mounted) return;
+      final latest = state.value;
+      if (latest != null) {
+        state = AsyncData(latest.copyWith(loadingMore: false));
+      }
+    }
   }
 
   /// Debounced free-text search.
@@ -169,10 +205,17 @@ class LibraryController extends AsyncNotifier<LibraryState> {
   /// Applies a new filter. The previous grid stays visible while the new
   /// results load, avoiding a loading flash on every keystroke.
   Future<void> _apply(LibraryState base) async {
+    // A stale search debounce must not re-apply old text over this change.
+    _searchDebounce?.cancel();
     final generation = ++_generation;
-    final next = await _fetch(base);
-    if (generation == _generation) {
+    try {
+      final next = await _fetch(base);
+      if (!ref.mounted || generation != _generation) return;
       state = AsyncData(next);
+    } catch (e, stackTrace) {
+      if (ref.mounted && state.value == null) {
+        state = AsyncError(e, stackTrace);
+      }
     }
   }
 
@@ -185,9 +228,11 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     final current = state.value;
     if (current == null || _pendingDeletes.containsKey(meme.id)) return;
 
+    // Captured now: the timer may fire after this notifier is disposed.
+    final repository = ref.read(libraryRepositoryProvider);
     _pendingDeletes[meme.id] = Timer(undoWindow, () async {
       _pendingDeletes.remove(meme.id);
-      await ref.read(libraryRepositoryProvider).deleteMeme(meme.id);
+      await repository.deleteMeme(meme.id);
     });
     state = AsyncData(
       current.copyWith(
@@ -207,12 +252,14 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     unawaited(_reload());
   }
 
-  /// Runs any pending deletions immediately (e.g. before a backup).
+  /// Runs any pending deletions immediately (e.g. before a backup, so an
+  /// export never contains memes the user already deleted).
   Future<void> flushPendingDeletes() async {
+    final repository = ref.read(libraryRepositoryProvider);
     final ids = _pendingDeletes.keys.toList(growable: false);
     for (final id in ids) {
       _pendingDeletes.remove(id)?.cancel();
-      await ref.read(libraryRepositoryProvider).deleteMeme(id);
+      await repository.deleteMeme(id);
     }
   }
 }

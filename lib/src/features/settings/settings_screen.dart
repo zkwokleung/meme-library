@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../backup/backup_service.dart';
 import '../../services/providers.dart';
+import '../library/library_controller.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -34,6 +35,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _export() => _runBusy(() async {
     try {
+      // Commit any delete still inside its undo window so the backup
+      // matches what the user sees.
+      await ref.read(libraryControllerProvider.notifier).flushPendingDeletes();
       final archive = await ref.read(backupServiceProvider).exportArchive();
       await ref
           .read(shareServiceProvider)

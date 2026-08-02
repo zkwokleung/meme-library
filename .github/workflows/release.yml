@@ -5,12 +5,38 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  verify:
+    name: Verify tag and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.7
+          cache: true
+      - run: flutter pub get
+      - name: Tag matches pubspec version
+        run: |
+          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PUBSPEC_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pubspec version $PUBSPEC_VERSION"
+            exit 1
+          fi
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze
+      - run: flutter test
+
   android:
     name: Android release artifacts
+    needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       # `secrets` is not usable in step `if` expressions; bridge via env.
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
@@ -23,12 +49,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.41.7
           cache: true
       - run: flutter pub get
 
       # Optional release signing: provide these repository secrets to ship
-      # a properly signed build. Without them the artifacts are debug-signed
-      # (installable, but not store-uploadable).
+      # a store-uploadable build. Without them the artifacts fall back to
+      # the debug key and are explicitly labeled as such.
       - name: Configure signing
         if: ${{ env.HAS_KEYSTORE == 'true' }}
         env:
@@ -38,37 +65,45 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release.keystore
-          cat > android/key.properties <<EOF
-          storeFile=../release.keystore
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
+          {
+            printf 'storeFile=../release.keystore\n'
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+          } > android/key.properties
 
       - name: Build APK and app bundle
         run: |
           flutter build apk --release
           flutter build appbundle --release
 
-      - name: Rename artifacts
+      - name: Collect artifacts
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/meme-library-${GITHUB_REF_NAME}.apk"
-          cp build/app/outputs/bundle/release/app-release.aab "dist/meme-library-${GITHUB_REF_NAME}.aab"
+          if [ "$HAS_KEYSTORE" = "true" ]; then SUFFIX=""; else SUFFIX="-debugsigned"; fi
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/meme-library-${GITHUB_REF_NAME}${SUFFIX}.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/meme-library-${GITHUB_REF_NAME}${SUFFIX}.aab"
 
       - uses: actions/upload-artifact@v4
         with:
           name: android-release
           path: dist/*
+          if-no-files-found: error
 
   ios:
     name: iOS unsigned archive
+    needs: verify
     runs-on: macos-15
+    timeout-minutes: 45
+    # The iOS artifact is unsigned by design (sideloading only); its
+    # failure must not block the Android release.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.41.7
           cache: true
       - run: flutter pub get
       - name: Build unsigned iOS app
@@ -82,11 +117,17 @@ jobs:
         with:
           name: ios-release
           path: dist/*
+          if-no-files-found: error
 
   publish:
     name: Publish GitHub release
     needs: [android, ios]
+    # Run when android succeeded, even if the optional ios job failed.
+    if: ${{ !cancelled() && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -98,5 +139,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
             --title "Meme Library $GITHUB_REF_NAME" \
             --generate-notes

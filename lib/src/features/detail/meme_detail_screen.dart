@@ -48,6 +48,21 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
     super.dispose();
   }
 
+  /// Runs a repository mutation, handling the meme disappearing under us
+  /// (a pending delete committing, or a restore replacing the library).
+  Future<void> _mutate(Future<Meme> Function() body) async {
+    try {
+      final updated = await body();
+      if (mounted) setState(() => _meme = updated);
+    } on StateError {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('This meme was deleted')));
+      Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _saveMetadata() async {
     final meme = _meme;
     if (meme == null) return;
@@ -55,14 +70,15 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
     final notes = _notesController.text.trim();
     if ((meme.title ?? '') == title && (meme.notes ?? '') == notes) return;
 
-    final updated = await ref
-        .read(libraryRepositoryProvider)
-        .updateMetadata(
-          meme.id,
-          title: () => title.isEmpty ? null : title,
-          notes: () => notes.isEmpty ? null : notes,
-        );
-    if (mounted) setState(() => _meme = updated);
+    await _mutate(
+      () => ref
+          .read(libraryRepositoryProvider)
+          .updateMetadata(
+            meme.id,
+            title: () => title.isEmpty ? null : title,
+            notes: () => notes.isEmpty ? null : notes,
+          ),
+    );
   }
 
   Future<void> _addTag() async {
@@ -74,9 +90,10 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
     if (name == null || Tag.normalize(name).isEmpty) return;
 
     final repository = ref.read(libraryRepositoryProvider);
-    final tag = await repository.ensureTag(name);
-    final updated = await repository.setTags(meme.id, [...meme.tags, tag]);
-    if (mounted) setState(() => _meme = updated);
+    await _mutate(() async {
+      final tag = await repository.ensureTag(name);
+      return repository.setTags(meme.id, [...meme.tags, tag]);
+    });
   }
 
   Future<String?> _promptForTag(List<Tag> allTags, List<Tag> current) {
@@ -137,20 +154,25 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
   Future<void> _removeTag(Tag tag) async {
     final meme = _meme;
     if (meme == null) return;
-    final updated = await ref
-        .read(libraryRepositoryProvider)
-        .setTags(
-          meme.id,
-          meme.tags.where((t) => t.id != tag.id).toList(growable: false),
-        );
-    if (mounted) setState(() => _meme = updated);
+    await _mutate(
+      () => ref
+          .read(libraryRepositoryProvider)
+          .setTags(
+            meme.id,
+            meme.tags.where((t) => t.id != tag.id).toList(growable: false),
+          ),
+    );
   }
 
   void _delete() {
     final meme = _meme;
     if (meme == null) return;
+    // Captured before pop: this context is gone afterwards. The undo
+    // snackbar appears over the library grid underneath.
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = ref.read(libraryControllerProvider.notifier);
     Navigator.of(context).pop();
-    ref.read(libraryControllerProvider.notifier).deleteWithUndo(meme);
+    deleteMemeWithUndo(messenger, controller, meme);
   }
 
   @override

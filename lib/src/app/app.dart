@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,7 +22,8 @@ class _MemeLibraryAppState extends ConsumerState<MemeLibraryApp> {
     super.initState();
     if (widget.bindIncomingShares) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(importControllerProvider).bindIncomingShares();
+        if (!mounted) return;
+        unawaited(ref.read(importControllerProvider).bindIncomingShares());
       });
     }
   }

@@ -137,6 +137,13 @@ class ImportCoordinator {
     List<String?>? sourceRefs,
     ImportProgress? onProgress,
   }) async {
+    if (sourceRefs != null && sourceRefs.length != items.length) {
+      throw ArgumentError.value(
+        sourceRefs,
+        'sourceRefs',
+        'must match items in length',
+      );
+    }
     final outcomes = <ImportOutcome>[];
     for (var i = 0; i < items.length; i++) {
       outcomes.add(

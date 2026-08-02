@@ -15,33 +15,57 @@ void showTagManagerSheet(BuildContext context) {
   );
 }
 
+/// Owns its text controller so it is disposed with the dialog.
+class _RenameTagDialog extends StatefulWidget {
+  const _RenameTagDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameTagDialog> createState() => _RenameTagDialogState();
+}
+
+class _RenameTagDialogState extends State<_RenameTagDialog> {
+  late final _controller = TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename tag'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Rename'),
+        ),
+      ],
+    );
+  }
+}
+
 class _TagManagerSheet extends ConsumerWidget {
   const _TagManagerSheet();
 
   Future<void> _rename(BuildContext context, WidgetRef ref, Tag tag) async {
-    final controller = TextEditingController(text: tag.name);
     final messenger = ScaffoldMessenger.of(context);
     final newName = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Rename tag'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('Rename'),
-          ),
-        ],
-      ),
+      builder: (_) => _RenameTagDialog(initialName: tag.name),
     );
     if (newName == null || Tag.normalize(newName).isEmpty) return;
 
