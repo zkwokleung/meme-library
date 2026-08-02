@@ -55,7 +55,7 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "clipboard.readImage" -> result.success(readClipboardImage())
+                "clipboard.readImage" -> readClipboardImageWhenFocused(result)
                 "clipboard.writeImage" -> {
                     val bytes = call.argument<ByteArray>("bytes")
                     val name = call.argument<String>("name")
@@ -134,17 +134,54 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Android only serves the clipboard to the window that currently has
+     * input focus. When the read is triggered from a closing bottom
+     * sheet, focus returns to the activity a few frames later — wait for
+     * it (bounded) instead of failing.
+     */
+    private fun readClipboardImageWhenFocused(
+        result: MethodChannel.Result,
+        attempt: Int = 0,
+    ) {
+        if (hasWindowFocus() || attempt >= 20) {
+            result.success(readClipboardImage())
+        } else {
+            window.decorView.postDelayed(
+                { readClipboardImageWhenFocused(result, attempt + 1) },
+                50,
+            )
+        }
+    }
+
     private fun readClipboardImage(): Map<String, Any?>? {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = clipboard.primaryClip ?: return null
+        val clip = clipboard.primaryClip
+        if (clip == null) {
+            Log.w(TAG, "readClipboardImage: primaryClip is null (focus=${hasWindowFocus()})")
+            return null
+        }
         for (i in 0 until clip.itemCount) {
-            val uri = clip.getItemAt(i).uri ?: continue
+            val item = clip.getItemAt(i)
+            val uri = item.uri
+            if (uri == null) {
+                // Never log clipboard content; the mime type is enough.
+                Log.w(
+                    TAG,
+                    "readClipboardImage: item $i has no uri " +
+                        "(mime=${clip.description.getMimeType(0)})",
+                )
+                continue
+            }
             try {
                 // Only image content, and never more than the validator
                 // would accept: reading an arbitrary copied file into the
                 // heap can OOM the app.
                 val mime = contentResolver.getType(uri)
-                if (mime != null && !mime.startsWith("image/")) continue
+                if (mime != null && !mime.startsWith("image/")) {
+                    Log.w(TAG, "readClipboardImage: skipping mime=$mime")
+                    continue
+                }
                 val buffer = java.io.ByteArrayOutputStream()
                 val complete = contentResolver.openInputStream(uri)?.use { input ->
                     copyCapped(input, buffer)
@@ -152,7 +189,7 @@ class MainActivity : FlutterActivity() {
                 if (!complete || buffer.size() == 0) continue
                 return mapOf("bytes" to buffer.toByteArray(), "name" to uri.lastPathSegment)
             } catch (e: Exception) {
-                // Try the next clip item.
+                Log.w(TAG, "readClipboardImage: item $i failed", e)
             }
         }
         return null
@@ -180,15 +217,20 @@ class MainActivity : FlutterActivity() {
      */
     private fun writeClipboardImage(bytes: ByteArray, name: String?): Boolean {
         return try {
-            val dir = File(cacheDir, "clipboard").apply { mkdirs() }
+            // filesDir, not cacheDir: under storage pressure the system
+            // purges cache while the ClipData URI still points at it,
+            // breaking paste. Only the latest copy is kept.
+            val dir = File(filesDir, "clipboard").apply { mkdirs() }
             dir.listFiles()?.forEach { it.delete() }
             val file = File(dir, name?.takeIf { it.isNotBlank() } ?: "meme.png")
             file.writeBytes(bytes)
             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newUri(contentResolver, "Meme", uri))
+            Log.w(TAG, "writeClipboardImage: set clip uri=$uri")
             true
         } catch (e: Exception) {
+            Log.w(TAG, "writeClipboardImage failed", e)
             false
         }
     }
