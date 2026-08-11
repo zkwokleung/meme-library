@@ -11,6 +11,7 @@ import '../import/source_import_services.dart';
 import '../import/url_import_service.dart';
 import '../services/platform/backup_file_picker.dart';
 import '../services/providers.dart';
+import '../update/app_update_service.dart';
 
 /// Infrastructure singletons created during bootstrap and injected via
 /// [ProviderScope.overrides]; tests override them with in-memory fakes.
@@ -78,4 +79,16 @@ final backupServiceProvider = Provider<BackupService>(
 
 final backupFilePickerProvider = Provider<BackupFilePicker>(
   (ref) => const FileSelectorBackupFilePicker(),
+);
+
+/// Scratch directory for downloaded update installers.
+final updateWorkDirectoryProvider = Provider<Directory>(
+  (ref) => throw UnimplementedError(
+    'updateWorkDirectoryProvider must be overridden',
+  ),
+);
+
+final appUpdateServiceProvider = Provider<AppUpdateService>(
+  (ref) =>
+      AppUpdateService(workDirectory: ref.watch(updateWorkDirectoryProvider)),
 );
