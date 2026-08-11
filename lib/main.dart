@@ -40,11 +40,14 @@ Future<void> main() async {
 
   final temp = await getTemporaryDirectory();
   final backupWorkDir = Directory(p.join(temp.path, 'meme_library_backup'));
+  // Exposed to the installer through the FileProvider "updates" cache-path.
+  final updateWorkDir = Directory(p.join(temp.path, 'meme_library_updates'));
 
   runApp(
     ProviderScope(
       overrides: [
         backupWorkDirectoryProvider.overrideWithValue(backupWorkDir),
+        updateWorkDirectoryProvider.overrideWithValue(updateWorkDir),
         mediaStoreProvider.overrideWithValue(mediaStore),
         libraryRepositoryProvider.overrideWithValue(repository),
         clipboardServiceProvider.overrideWithValue(

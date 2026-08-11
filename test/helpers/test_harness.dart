@@ -17,6 +17,7 @@ import 'package:meme_library/src/services/platform/clipboard_service.dart';
 import 'package:meme_library/src/services/platform/gallery_picker.dart';
 import 'package:meme_library/src/services/platform/incoming_share_service.dart';
 import 'package:meme_library/src/services/platform/share_service.dart';
+import 'package:meme_library/src/services/platform/update_installer.dart';
 import 'package:meme_library/src/services/providers.dart';
 import 'package:path/path.dart' as p;
 
@@ -86,6 +87,29 @@ class FakeHeicTranscoder implements HeicTranscoder {
   }
 }
 
+class FakeUpdateInstaller implements UpdateInstaller {
+  String? version = '1.0.0';
+  InstallApkResult installResult = InstallApkResult.started;
+  bool openUrlResult = true;
+  final installedPaths = <String>[];
+  final openedUrls = <String>[];
+
+  @override
+  Future<String?> installedVersion() async => version;
+
+  @override
+  Future<InstallApkResult> installApk(String path) async {
+    installedPaths.add(path);
+    return installResult;
+  }
+
+  @override
+  Future<bool> openUrl(String url) async {
+    openedUrls.add(url);
+    return openUrlResult;
+  }
+}
+
 /// Real storage core on temp dirs + fake platform services.
 class TestHarness {
   TestHarness._(
@@ -98,6 +122,7 @@ class TestHarness {
     this.incomingShares,
     this.gallery,
     this.heic,
+    this.updateInstaller,
   );
 
   final Directory root;
@@ -109,6 +134,7 @@ class TestHarness {
   final FakeIncomingShareService incomingShares;
   final FakeGalleryPicker gallery;
   final FakeHeicTranscoder heic;
+  final FakeUpdateInstaller updateInstaller;
 
   static Future<TestHarness> create() async {
     final root = await Directory.systemTemp.createTemp('meme_harness');
@@ -126,6 +152,7 @@ class TestHarness {
       FakeIncomingShareService(),
       FakeGalleryPicker(),
       FakeHeicTranscoder(),
+      FakeUpdateInstaller(),
     );
   }
 
@@ -145,6 +172,10 @@ class TestHarness {
     incomingShareServiceProvider.overrideWithValue(incomingShares),
     galleryPickerProvider.overrideWithValue(gallery),
     heicTranscoderProvider.overrideWithValue(heic),
+    updateInstallerProvider.overrideWithValue(updateInstaller),
+    updateWorkDirectoryProvider.overrideWithValue(
+      Directory(p.join(root.path, 'update_work')),
+    ),
   ];
 
   Future<void> dispose() async {
