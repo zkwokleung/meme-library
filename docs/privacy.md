@@ -26,10 +26,20 @@ already had.
 
 ## Network access
 
-The app makes exactly one kind of network request: downloading an image
-from a URL that you type or paste yourself. There are no analytics, no
-crash reporting, no telemetry, no accounts, and no third-party SDKs that
-phone home.
+The app makes a network request only when you trigger one:
+
+- Downloading an image from a URL that you type or paste yourself.
+- Checking for updates from the Settings screen, which queries this
+  app's GitHub releases and, on Android, downloads the new APK if you
+  confirm. There are no automatic or background update checks.
+
+There are no analytics, no crash reporting, no telemetry, no accounts,
+and no third-party SDKs that phone home.
+
+On Android the app declares `REQUEST_INSTALL_PACKAGES` so a downloaded
+update can be handed to the system package installer. It grants nothing
+until you enable "Install unknown apps" for Meme Library, and installing
+always goes through the system installer's own confirmation screen.
 
 ## Data leaving the device
 
