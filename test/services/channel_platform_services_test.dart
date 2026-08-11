@@ -88,4 +88,87 @@ void main() {
       expect(await ChannelIncomingShareService().takeInitialShares(), isEmpty);
     });
   });
+
+  group('ChannelGalleryPicker', () {
+    test('pickImages parses the staged file list in order', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'gallery.pickImages');
+        return [
+          {'path': '/tmp/a', 'name': 'IMG_1234.HEIC'},
+          {'path': '/tmp/b', 'name': null},
+        ];
+      });
+
+      final picked = await const ChannelGalleryPicker().pickImages();
+      expect(picked.map((p) => p.path), ['/tmp/a', '/tmp/b']);
+      expect(picked.first.displayName, 'IMG_1234.HEIC');
+      expect(picked.last.displayName, isNull);
+    });
+
+    test('pickImages drops entries without a path', () async {
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => [
+          'not a map',
+          {'name': 'orphan.png'},
+          {'path': '/tmp/ok', 'name': 'ok.png'},
+        ],
+      );
+      final picked = await const ChannelGalleryPicker().pickImages();
+      expect(picked.single.path, '/tmp/ok');
+    });
+
+    test('a cancelled pick is an empty list, not an error', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async => []);
+      expect(await const ChannelGalleryPicker().pickImages(), isEmpty);
+
+      messenger.setMockMethodCallHandler(platformChannel, (call) async => null);
+      expect(await const ChannelGalleryPicker().pickImages(), isEmpty);
+    });
+
+    test('a picker scratch name is not treated as provenance', () async {
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => [
+          {'path': '/tmp/a', 'name': 'image_picker_9f8e7d.jpg'},
+        ],
+      );
+      final picked = await const ChannelGalleryPicker().pickImages();
+      expect(picked.single.displayName, isNull);
+    });
+  });
+
+  group('ChannelHeicTranscoder', () {
+    test('transcodeToJpeg forwards the path and returns bytes', () async {
+      final bytes = Uint8List.fromList([0xFF, 0xD8, 0xFF]);
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'image.transcodeToJpeg');
+        expect((call.arguments as Map)['path'], '/tmp/x.heic');
+        return {'bytes': bytes};
+      });
+
+      final result = await const ChannelHeicTranscoder().transcodeToJpeg(
+        '/tmp/x.heic',
+      );
+      expect(result, bytes);
+    });
+
+    test('an undecodable source is null, not an exception', () async {
+      for (final payload in <Object?>[
+        null,
+        <String, Object?>{},
+        {'bytes': Uint8List(0)},
+      ]) {
+        messenger.setMockMethodCallHandler(
+          platformChannel,
+          (call) async => payload,
+        );
+        expect(
+          await const ChannelHeicTranscoder().transcodeToJpeg('/tmp/x.heic'),
+          isNull,
+          reason: '$payload',
+        );
+      }
+    });
+  });
 }

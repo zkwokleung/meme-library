@@ -5,6 +5,7 @@ import 'package:archive/archive_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:meme_library/src/backup/backup_service.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/domain/library_query.dart';
 import 'package:meme_library/src/domain/meme.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
@@ -196,12 +197,41 @@ void main() {
       expect(await harness.mediaStore.exists(meme.thumbnailPath), isTrue);
     });
 
+    test('an unrecognised source kind still restores', () async {
+      // An archive written by a newer build may carry a provenance value
+      // this one has never heard of. Provenance is display-only, so it
+      // must degrade to `unknown` rather than fail the whole restore.
+      final meme = await seedMeme(23, title: 'From the future');
+      final zip = await service.exportArchive();
+
+      final archive = ZipDecoder().decodeBytes(await zip.readAsBytes());
+      final manifest = await readManifest(zip);
+      final memes = (manifest['memes']! as List<Object?>)
+          .cast<Map<String, Object?>>();
+      for (final entry in memes) {
+        entry['sourceKind'] = 'teleporter';
+      }
+      final rewritten = await buildArchive({
+        for (final file in archive.files)
+          if (file.isFile && file.name != 'manifest.json')
+            file.name: file.readBytes()!,
+        'manifest.json': utf8.encode(jsonEncode(manifest)),
+      }, name: 'future.zip');
+
+      final summary = await service.restoreArchive(rewritten);
+      expect(summary.memeCount, 1);
+      final restored = await harness.repository.memeById(meme.id);
+      expect(restored!.sourceKind, MemeSourceKind.unknown);
+      expect(restored.title, 'From the future');
+    });
+
     test(
       'round-trips an animated meme, regenerating an animated thumb',
       () async {
         final coordinator = ImportCoordinator(
           repository: harness.repository,
           mediaStore: harness.mediaStore,
+          pipeline: const InlineImagePipeline(),
         );
         final meme =
             (await coordinator.importBytes(

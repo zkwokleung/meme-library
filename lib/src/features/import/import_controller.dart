@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../import/import_coordinator.dart';
+import '../../services/platform/gallery_picker.dart';
 import '../../services/platform/incoming_share_service.dart';
 import '../../services/providers.dart';
 
@@ -84,6 +85,31 @@ class ImportController {
         .importFromUrl(url);
     return [outcome];
   });
+
+  /// Opens the system photo picker and imports whatever the user chooses.
+  ///
+  /// Returns `null` when the picker is dismissed without a selection: a
+  /// cancel is not an outcome, and letting an empty list reach [_run]
+  /// would raise a "Nothing to import" error SnackBar every time someone
+  /// backs out. The picker runs outside [_run] so the OS sheet does not
+  /// count as an import in flight.
+  Future<ImportFeedback?> importFromGallery() async {
+    final List<PickedGalleryImage> picked;
+    try {
+      picked = await _ref.read(galleryPickerProvider).pickImages();
+    } catch (_) {
+      const feedback = ImportFeedback(
+        message: 'The photo picker could not be opened.',
+        isError: true,
+      );
+      if (!_feedback.isClosed) _feedback.add(feedback);
+      return feedback;
+    }
+    if (picked.isEmpty) return null;
+    return _run(
+      () => _ref.read(galleryImportServiceProvider).importPicked(picked),
+    );
+  }
 
   /// Starts listening for shares from other apps (cold and warm starts).
   ///

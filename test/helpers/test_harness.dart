@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/app/providers.dart';
 import 'package:meme_library/src/data/database/app_database.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/data/library_repository.dart';
 import 'package:meme_library/src/data/media_store.dart';
 import 'package:meme_library/src/domain/meme.dart';
@@ -12,6 +14,7 @@ import 'package:meme_library/src/features/library/library_controller.dart';
 import 'package:meme_library/src/features/library/library_screen.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
+import 'package:meme_library/src/services/platform/gallery_picker.dart';
 import 'package:meme_library/src/services/platform/incoming_share_service.dart';
 import 'package:meme_library/src/services/platform/share_service.dart';
 import 'package:meme_library/src/services/providers.dart';
@@ -59,6 +62,30 @@ class FakeIncomingShareService implements IncomingShareService {
   Stream<List<IncomingSharedFile>> get incomingShares => controller.stream;
 }
 
+class FakeGalleryPicker implements GalleryPicker {
+  /// Returned as-is by [pickImages]; leave empty to simulate a cancel.
+  var picked = <PickedGalleryImage>[];
+  var pickCount = 0;
+
+  @override
+  Future<List<PickedGalleryImage>> pickImages() async {
+    pickCount++;
+    return picked;
+  }
+}
+
+class FakeHeicTranscoder implements HeicTranscoder {
+  /// Bytes to hand back; `null` simulates a platform that cannot decode.
+  Uint8List? result;
+  final calls = <String>[];
+
+  @override
+  Future<Uint8List?> transcodeToJpeg(String path) async {
+    calls.add(path);
+    return result;
+  }
+}
+
 /// Real storage core on temp dirs + fake platform services.
 class TestHarness {
   TestHarness._(
@@ -69,6 +96,8 @@ class TestHarness {
     this.clipboard,
     this.share,
     this.incomingShares,
+    this.gallery,
+    this.heic,
   );
 
   final Directory root;
@@ -78,6 +107,8 @@ class TestHarness {
   final FakeClipboardService clipboard;
   final FakeShareService share;
   final FakeIncomingShareService incomingShares;
+  final FakeGalleryPicker gallery;
+  final FakeHeicTranscoder heic;
 
   static Future<TestHarness> create() async {
     final root = await Directory.systemTemp.createTemp('meme_harness');
@@ -93,6 +124,8 @@ class TestHarness {
       FakeClipboardService(),
       FakeShareService(),
       FakeIncomingShareService(),
+      FakeGalleryPicker(),
+      FakeHeicTranscoder(),
     );
   }
 
@@ -101,11 +134,17 @@ class TestHarness {
     backupWorkDirectoryProvider.overrideWithValue(
       Directory(p.join(root.path, 'backup_work')),
     ),
+    // Widget tests run inside a fake-async zone that cannot pump the
+    // ReceivePort a real isolate completes through; the work would never
+    // finish and every pumpUntil would spin to its iteration limit.
+    imagePipelineProvider.overrideWithValue(const InlineImagePipeline()),
     mediaStoreProvider.overrideWithValue(mediaStore),
     libraryRepositoryProvider.overrideWithValue(repository),
     clipboardServiceProvider.overrideWithValue(clipboard),
     shareServiceProvider.overrideWithValue(share),
     incomingShareServiceProvider.overrideWithValue(incomingShares),
+    galleryPickerProvider.overrideWithValue(gallery),
+    heicTranscoderProvider.overrideWithValue(heic),
   ];
 
   Future<void> dispose() async {
@@ -125,6 +164,7 @@ Future<Meme> harnessImport(TestHarness harness, {required int seed}) async {
   final coordinator = ImportCoordinator(
     repository: harness.repository,
     mediaStore: harness.mediaStore,
+    pipeline: const InlineImagePipeline(),
   );
   final outcome = await coordinator.importBytes(
     pngBytes(seed: seed),

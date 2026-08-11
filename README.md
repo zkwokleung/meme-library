@@ -6,8 +6,8 @@
 
 **Your meme stash, on your phone, nowhere else.**
 
-Save memes from your clipboard, other apps, or links — then find the
-right one in seconds and drop it into any conversation.
+Save memes from your photos, clipboard, other apps, or links — then
+find the right one in seconds and drop it into any conversation.
 
 [![CI](https://github.com/zkwokleung/meme-library/actions/workflows/ci.yml/badge.svg)](https://github.com/zkwokleung/meme-library/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zkwokleung/meme-library?include_prereleases)](https://github.com/zkwokleung/meme-library/releases)
@@ -24,8 +24,10 @@ right one in seconds and drop it into any conversation.
 
 ## Features
 
-- **Save from anywhere** — paste an image, drop in a link, or share
-  straight into the app from any other app.
+- **Save from anywhere** — pick from your photo library, paste an
+  image, drop in a link, or share straight into the app from any other
+  app. The photo picker needs no photo-library permission on either
+  platform.
 - **GIFs that move** — animated GIF, WebP, and APNG memes play right in
   the grid and paste animated.
 - **Find it fast** — full-text search over titles, notes, and tags,
@@ -78,10 +80,11 @@ is testable without a device:
 lib/src/
   domain/     immutable models (Meme, Tag, LibraryQuery)
   data/       Drift database (FTS5), hash-keyed media store, repository
-  import/     one validated import pipeline for clipboard, URL, shares
+  import/     one validated pipeline for gallery, clipboard, URL, shares
   backup/     streaming ZIP export + transactional restore
   features/   library grid, detail, tags, settings (Riverpod)
-  services/   platform boundaries: clipboard, share, incoming shares
+  services/   platform boundaries: clipboard, share, incoming shares,
+              photo picker, HEIC transcode
 ```
 
 Releases are automated: pushing a `v*` tag builds and publishes the

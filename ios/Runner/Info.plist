@@ -26,6 +26,11 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- PHPickerViewController runs out of process and never triggers this
+	     prompt, but App Store policy requires the key to be present when
+	     the binary can reach the photo library at all. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Meme Library only reads the photos you pick, and nothing ever leaves your device.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

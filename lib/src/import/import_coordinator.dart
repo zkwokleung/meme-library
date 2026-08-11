@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:uuid/uuid.dart';
 
+import '../data/image_pipeline.dart';
 import '../data/image_validator.dart';
 import '../data/library_repository.dart';
 import '../data/media_store.dart';
@@ -55,15 +56,18 @@ class ImportCoordinator {
     required LibraryRepository repository,
     required MediaStore mediaStore,
     ImageValidator validator = const ImageValidator(),
+    ImagePipeline pipeline = const IsolateImagePipeline(),
     DateTime Function()? clock,
   }) : _repository = repository,
        _media = mediaStore,
        _validator = validator,
+       _pipeline = pipeline,
        _clock = clock ?? DateTime.now;
 
   final LibraryRepository _repository;
   final MediaStore _media;
   final ImageValidator _validator;
+  final ImagePipeline _pipeline;
   final DateTime Function() _clock;
   final _uuid = const Uuid();
 
@@ -73,22 +77,33 @@ class ImportCoordinator {
     required MemeSourceKind sourceKind,
     String? sourceRef,
   }) async {
-    final ValidatedImage image;
+    final ProbedImage probed;
     try {
-      image = _validator.validate(bytes);
+      probed = await _pipeline.probe(bytes, validator: _validator);
     } on ImageValidationException catch (e) {
       return ImportFailure(_mapRejection(e.rejection), _describeRejection(e));
     }
 
-    final hash = MediaStore.hashBytes(image.bytes);
+    final hash = probed.sha256;
     final existing = await _repository.memeBySha256(hash);
     if (existing != null) {
       return ImportSuccess(existing, wasDuplicate: true);
     }
 
+    // Only new content reaches the thumbnail encoder, so a re-import never
+    // pays for a decode it will throw away.
+    final image = probed.toValidatedImage(bytes);
     final StoredMedia stored;
     try {
-      stored = await _media.store(image, knownSha256: hash);
+      final thumbnail = await _pipeline.thumbnail(
+        image,
+        maxDimension: _media.thumbnailMaxDimension,
+      );
+      stored = await _media.store(
+        image,
+        knownSha256: hash,
+        thumbnail: thumbnail,
+      );
     } on MediaStoreException catch (e) {
       return ImportFailure(
         ImportFailureReason.storage,
@@ -162,8 +177,8 @@ class ImportCoordinator {
         ImageRejection.empty => ImportFailureReason.emptySource,
         ImageRejection.tooLarge ||
         ImageRejection.tooManyPixels => ImportFailureReason.tooLarge,
-        ImageRejection.unsupportedFormat =>
-          ImportFailureReason.unsupportedFormat,
+        ImageRejection.unsupportedFormat ||
+        ImageRejection.needsConversion => ImportFailureReason.unsupportedFormat,
         ImageRejection.corrupt => ImportFailureReason.corrupt,
       };
 
@@ -174,6 +189,8 @@ class ImportCoordinator {
         ImageRejection.tooManyPixels => 'The image is too large to import.',
         ImageRejection.unsupportedFormat =>
           'Only PNG, JPEG, WebP, and GIF images are supported.',
+        ImageRejection.needsConversion =>
+          'HEIC photos need converting first. Export as JPEG and try again.',
         ImageRejection.corrupt => 'The image data is damaged or incomplete.',
       };
 }

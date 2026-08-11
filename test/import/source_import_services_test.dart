@@ -3,11 +3,14 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/data/database/app_database.dart';
+import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/data/library_repository.dart';
 import 'package:meme_library/src/data/media_store.dart';
+import 'package:meme_library/src/domain/meme.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
 import 'package:meme_library/src/import/source_import_services.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
+import 'package:meme_library/src/services/platform/gallery_picker.dart';
 import 'package:meme_library/src/services/platform/incoming_share_service.dart';
 import 'package:path/path.dart' as p;
 
@@ -29,6 +32,17 @@ class _FakeClipboard implements ClipboardService {
   Future<bool> writeImage(ClipboardImage image) async => true;
 }
 
+class _FakeTranscoder implements HeicTranscoder {
+  Uint8List? result;
+  final calls = <String>[];
+
+  @override
+  Future<Uint8List?> transcodeToJpeg(String path) async {
+    calls.add(path);
+    return result;
+  }
+}
+
 void main() {
   late Directory root;
   late AppDatabase db;
@@ -42,7 +56,11 @@ void main() {
     media = MediaStore(root);
     await media.init();
     repo = DriftLibraryRepository(db, media);
-    coordinator = ImportCoordinator(repository: repo, mediaStore: media);
+    coordinator = ImportCoordinator(
+      repository: repo,
+      mediaStore: media,
+      pipeline: const InlineImagePipeline(),
+    );
   });
 
   tearDown(() async {
@@ -147,6 +165,139 @@ void main() {
       final meme = (outcomes.single as ImportSuccess).meme;
       expect(meme.mimeType, 'image/gif');
       expect(meme.thumbnailPath, endsWith('_t.gif'));
+    });
+  });
+
+  group('GalleryImportService', () {
+    late _FakeTranscoder transcoder;
+    late GalleryImportService service;
+    late Directory picks;
+
+    setUp(() async {
+      transcoder = _FakeTranscoder();
+      service = GalleryImportService(coordinator, transcoder);
+      picks = await Directory.systemTemp.createTemp('gallery_picks');
+    });
+
+    tearDown(() async {
+      if (picks.existsSync()) await picks.delete(recursive: true);
+    });
+
+    Future<PickedGalleryImage> stage(
+      List<int> bytes, {
+      String name = 'pick.bin',
+      String? displayName,
+    }) async {
+      final file = File(p.join(picks.path, name));
+      await file.writeAsBytes(bytes, flush: true);
+      return PickedGalleryImage(path: file.path, displayName: displayName);
+    }
+
+    test('imports picked images and removes the temporary copies', () async {
+      final picked = [
+        await stage(pngBytes(seed: 1), name: 'a.png'),
+        await stage(pngBytes(seed: 2), name: 'b.png'),
+      ];
+
+      final progress = <(int, int)>[];
+      final outcomes = await service.importPicked(
+        picked,
+        onProgress: (done, total) => progress.add((done, total)),
+      );
+
+      expect(outcomes.whereType<ImportSuccess>(), hasLength(2));
+      expect(progress, [(1, 2), (2, 2)]);
+      expect(await repo.memeCount(), 2);
+      for (final pick in picked) {
+        expect(File(pick.path).existsSync(), isFalse, reason: pick.path);
+      }
+    });
+
+    test('records the gallery file name as the source reference', () async {
+      final picked = await stage(
+        pngBytes(seed: 3),
+        name: 'x.png',
+        displayName: 'IMG_1234.PNG',
+      );
+      final outcomes = await service.importPicked([picked]);
+      final meme = (outcomes.single as ImportSuccess).meme;
+
+      expect(meme.sourceKind, MemeSourceKind.gallery);
+      expect(meme.sourceRef, 'IMG_1234.PNG');
+    });
+
+    test('a missing pick fails without aborting the batch', () async {
+      final outcomes = await service.importPicked([
+        const PickedGalleryImage(path: '/nonexistent/gone.png'),
+        await stage(pngBytes(seed: 4), name: 'ok.png'),
+      ]);
+
+      expect(outcomes.first, isA<ImportFailure>());
+      expect(outcomes.last, isA<ImportSuccess>());
+      expect(await repo.memeCount(), 1);
+    });
+
+    test('HEIC files are transcoded before import', () async {
+      transcoder.result = jpegBytes(seed: 5);
+      final picked = await stage(
+        ftypBytes(majorBrand: 'heic'),
+        name: 'IMG_9.heic',
+        displayName: 'IMG_9.HEIC',
+      );
+
+      final outcome = (await service.importPicked([picked])).single;
+      expect(transcoder.calls, [picked.path]);
+
+      final meme = (outcome as ImportSuccess).meme;
+      expect(meme.mimeType, 'image/jpeg');
+      // Provenance keeps the original name even though the stored file is
+      // now a JPEG.
+      expect(meme.sourceRef, 'IMG_9.HEIC');
+    });
+
+    test('non-HEIF picks never reach the transcoder', () async {
+      await service.importPicked([
+        await stage(pngBytes(seed: 6), name: 'plain.png'),
+      ]);
+      expect(transcoder.calls, isEmpty);
+    });
+
+    test(
+      'a transcoder that cannot decode reports an actionable failure',
+      () async {
+        transcoder.result = null;
+        final picked = await stage(
+          ftypBytes(majorBrand: 'heic'),
+          name: 'bad.heic',
+        );
+
+        final outcome = (await service.importPicked([picked])).single;
+        expect(
+          outcome,
+          isA<ImportFailure>()
+              .having(
+                (f) => f.reason,
+                'reason',
+                ImportFailureReason.unsupportedFormat,
+              )
+              .having((f) => f.message, 'message', contains('converted')),
+        );
+        expect(File(picked.path).existsSync(), isFalse);
+      },
+    );
+
+    test('temporary copies are removed even when the import fails', () async {
+      final picked = await stage(unknownFormatBytes(), name: 'garbage.png');
+      final outcome = (await service.importPicked([picked])).single;
+
+      expect(outcome, isA<ImportFailure>());
+      expect(File(picked.path).existsSync(), isFalse);
+      expect(await repo.memeCount(), 0);
+    });
+
+    test('an empty selection is a no-op', () async {
+      expect(await service.importPicked(const []), isEmpty);
+      expect(await repo.memeCount(), 0);
     });
   });
 }

@@ -45,6 +45,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await ref.read(importControllerProvider).importFromClipboard();
   }
 
+  Future<void> _importFromGallery() async {
+    await ref.read(importControllerProvider).importFromGallery();
+  }
+
   Future<void> _importFromUrl() async {
     final url = await _promptForUrl();
     if (url == null || url.trim().isEmpty) return;
@@ -63,35 +67,47 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.content_paste_rounded),
-              title: const Text('Paste image'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _importFromClipboard();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.link_rounded),
-              title: const Text('Save from link'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _importFromUrl();
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Text(
-                'You can also share images to Meme Library from any app.',
-                style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+        // Three tiles plus the footer overflow a short sheet at large text
+        // scales.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded),
+                title: const Text('Save from photos'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _importFromGallery();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.content_paste_rounded),
+                title: const Text('Paste image'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _importFromClipboard();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.link_rounded),
+                title: const Text('Save from link'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _importFromUrl();
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Text(
+                  'You can also share images to Meme Library from any app.',
+                  style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -404,7 +420,8 @@ class _EmptyLibrary extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Save memes from your clipboard, another app, or a link.',
+                'Save memes from your photos, clipboard, another app, '
+                'or a link.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

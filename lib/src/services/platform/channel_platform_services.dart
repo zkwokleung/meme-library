@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import 'clipboard_service.dart';
+import 'gallery_picker.dart';
 import 'incoming_share_service.dart';
 
 /// Method channel shared by the platform service implementations.
@@ -75,4 +76,50 @@ class ChannelIncomingShareService implements IncomingShareService {
           mimeType: entry['mimeType'] as String?,
         ),
   ];
+}
+
+/// Photo gallery access backed by native code: `PHPickerViewController` on
+/// iOS, which returns each asset's original bytes and so preserves
+/// animation that a `UIImage` round trip would flatten.
+class ChannelGalleryPicker implements GalleryPicker {
+  const ChannelGalleryPicker([this._channel = platformChannel]);
+
+  final MethodChannel _channel;
+
+  @override
+  Future<List<PickedGalleryImage>> pickImages() async {
+    final result = await _channel.invokeListMethod<Object?>(
+      'gallery.pickImages',
+    );
+    return [
+      for (final entry in result ?? const <Object?>[])
+        if (entry is Map && entry['path'] is String)
+          PickedGalleryImage(
+            path: entry['path']! as String,
+            displayName: ImagePickerGalleryPicker.meaningfulDisplayName(
+              entry['name'] as String?,
+            ),
+          ),
+    ];
+  }
+}
+
+/// HEIC/HEIF conversion backed by native code: `ImageIO` on iOS and
+/// `ImageDecoder` on Android, both of which bake the container's rotation
+/// into the JPEG they return.
+class ChannelHeicTranscoder implements HeicTranscoder {
+  const ChannelHeicTranscoder([this._channel = platformChannel]);
+
+  final MethodChannel _channel;
+
+  @override
+  Future<Uint8List?> transcodeToJpeg(String path) async {
+    final result = await _channel.invokeMapMethod<String, Object?>(
+      'image.transcodeToJpeg',
+      {'path': path},
+    );
+    final bytes = result?['bytes'];
+    if (bytes is! Uint8List || bytes.isEmpty) return null;
+    return bytes;
+  }
 }
