@@ -68,6 +68,16 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
       result(writeClipboardImage(data: bytes.data))
     case "shares.takeInitial":
       result(Self.drainShareInbox())
+    case "app.getVersion":
+      result(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+    case "system.openUrl":
+      guard let args = call.arguments as? [String: Any],
+            let raw = args["url"] as? String,
+            let url = URL(string: raw), url.scheme == "https" else {
+        result(false)
+        return
+      }
+      UIApplication.shared.open(url) { ok in result(ok) }
     case "gallery.pickImages":
       presentGalleryPicker(result: result)
     case "image.transcodeToJpeg":

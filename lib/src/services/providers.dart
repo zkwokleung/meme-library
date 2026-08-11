@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'platform/channel_platform_services.dart';
 import 'platform/clipboard_service.dart';
 import 'platform/gallery_picker.dart';
 import 'platform/incoming_share_service.dart';
 import 'platform/share_service.dart';
+import 'platform/update_installer.dart';
 
 /// Providers for platform service boundaries.
 ///
@@ -34,4 +36,9 @@ final galleryPickerProvider = Provider<GalleryPicker>(
 final heicTranscoderProvider = Provider<HeicTranscoder>(
   (ref) =>
       throw UnimplementedError('heicTranscoderProvider must be overridden'),
+);
+
+/// Needs no bootstrap wiring, so the real implementation is the default.
+final updateInstallerProvider = Provider<UpdateInstaller>(
+  (ref) => const ChannelUpdateInstaller(),
 );

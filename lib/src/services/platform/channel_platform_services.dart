@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'clipboard_service.dart';
 import 'gallery_picker.dart';
 import 'incoming_share_service.dart';
+import 'update_installer.dart';
 
 /// Method channel shared by the platform service implementations.
 const platformChannel = MethodChannel('com.zkwokleung.memelibrary/platform');
@@ -101,6 +102,62 @@ class ChannelGalleryPicker implements GalleryPicker {
             ),
           ),
     ];
+  }
+}
+
+/// Update plumbing backed by native code: the package-installer intent and
+/// `PackageManager` on Android. iOS implements only the version lookup and
+/// URL opening; `installApk` is unimplemented there and reads as failed.
+class ChannelUpdateInstaller implements UpdateInstaller {
+  const ChannelUpdateInstaller([this._channel = platformChannel]);
+
+  final MethodChannel _channel;
+
+  @override
+  Future<String?> installedVersion() async {
+    try {
+      return await _channel.invokeMethod<String>('app.getVersion');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  @override
+  Future<InstallApkResult> installApk(String path) async {
+    try {
+      final result = await _channel.invokeMethod<String>('updates.installApk', {
+        'path': path,
+      });
+      return switch (result) {
+        'started' => InstallApkResult.started,
+        'permissionRequested' => InstallApkResult.permissionRequested,
+        _ => InstallApkResult.failed,
+      };
+    } on PlatformException {
+      return InstallApkResult.failed;
+    } on MissingPluginException {
+      return InstallApkResult.failed;
+    }
+  }
+
+  @override
+  Future<bool> openUrl(String url) async {
+    // The URL comes from remote release metadata; only https ever reaches
+    // the platform. Both native handlers enforce the same rule.
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.isScheme('https')) return false;
+    try {
+      final ok = await _channel.invokeMethod<bool>('system.openUrl', {
+        'url': url,
+      });
+      return ok ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
   }
 }
 

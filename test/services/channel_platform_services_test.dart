@@ -1,9 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/services/platform/channel_platform_services.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
+import 'package:meme_library/src/services/platform/update_installer.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -135,6 +134,100 @@ void main() {
       );
       final picked = await const ChannelGalleryPicker().pickImages();
       expect(picked.single.displayName, isNull);
+    });
+  });
+
+  group('ChannelUpdateInstaller', () {
+    test('installedVersion returns the platform version string', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'app.getVersion');
+        return '1.2.3';
+      });
+
+      expect(await const ChannelUpdateInstaller().installedVersion(), '1.2.3');
+    });
+
+    test('installedVersion tolerates null and platform errors', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async => null);
+      expect(await const ChannelUpdateInstaller().installedVersion(), isNull);
+
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw PlatformException(code: 'boom'),
+      );
+      expect(await const ChannelUpdateInstaller().installedVersion(), isNull);
+    });
+
+    test('installApk forwards the path and maps the result', () async {
+      const results = {
+        'started': InstallApkResult.started,
+        'permissionRequested': InstallApkResult.permissionRequested,
+        'failed': InstallApkResult.failed,
+        'garbage': InstallApkResult.failed,
+        null: InstallApkResult.failed,
+      };
+      for (final entry in results.entries) {
+        messenger.setMockMethodCallHandler(platformChannel, (call) async {
+          expect(call.method, 'updates.installApk');
+          expect((call.arguments as Map)['path'], '/tmp/app.apk');
+          return entry.key;
+        });
+        expect(
+          await const ChannelUpdateInstaller().installApk('/tmp/app.apk'),
+          entry.value,
+          reason: '${entry.key}',
+        );
+      }
+    });
+
+    test('installApk reads as failed where unimplemented', () async {
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw MissingPluginException(),
+      );
+      expect(
+        await const ChannelUpdateInstaller().installApk('/tmp/app.apk'),
+        InstallApkResult.failed,
+      );
+    });
+
+    test(
+      'openUrl rejects non-https urls before reaching the channel',
+      () async {
+        messenger.setMockMethodCallHandler(platformChannel, (call) async {
+          fail('the channel must not be invoked for ${call.arguments}');
+        });
+        for (final bad in [
+          'http://example.com/x',
+          'file:///etc/passwd',
+          'intent://scan/#Intent;end',
+          'not a url',
+        ]) {
+          expect(
+            await const ChannelUpdateInstaller().openUrl(bad),
+            isFalse,
+            reason: bad,
+          );
+        }
+      },
+    );
+
+    test('openUrl forwards the url and reports the outcome', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'system.openUrl');
+        expect((call.arguments as Map)['url'], 'https://example.com');
+        return true;
+      });
+      expect(
+        await const ChannelUpdateInstaller().openUrl('https://example.com'),
+        isTrue,
+      );
+
+      messenger.setMockMethodCallHandler(platformChannel, (call) async => null);
+      expect(
+        await const ChannelUpdateInstaller().openUrl('https://example.com'),
+        isFalse,
+      );
     });
   });
 

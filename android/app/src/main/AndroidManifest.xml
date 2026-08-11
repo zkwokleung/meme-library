@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Sole network use: downloading an image from a user-typed URL.
+    <!-- Network use: downloading an image from a user-typed URL, and the
+         user-triggered update check/download against GitHub releases.
          The photo picker (ACTION_PICK_IMAGES) needs no permission. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Self-update only: launching the package installer for an APK
+         downloaded from this app's GitHub releases. Grants nothing until
+         the user enables "Install unknown apps" for this app. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="Meme Library"
         android:name="${applicationName}"

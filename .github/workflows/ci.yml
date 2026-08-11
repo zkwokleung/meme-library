@@ -62,12 +62,15 @@ jobs:
             find build -name AndroidManifest.xml -path '*merged_manifests*' || true
             exit 1
           fi
-          # INTERNET is ours. DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION is an
-          # app-scoped signature permission androidx injects for runtime
-          # receivers; it grants nothing to other apps.
+          # INTERNET and REQUEST_INSTALL_PACKAGES are ours: URL import and
+          # the in-app updater's package-installer launch (which grants
+          # nothing until the user enables "Install unknown apps").
+          # DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION is an app-scoped
+          # signature permission androidx injects for runtime receivers;
+          # it grants nothing to other apps.
           unexpected=$(grep -o '<uses-permission[^>]*android:name="[^"]*"' "$merged" \
             | sed 's/.*android:name="//; s/"$//' | sort -u \
-            | grep -vE '^android\.permission\.INTERNET$' \
+            | grep -vE '^android\.permission\.(INTERNET|REQUEST_INSTALL_PACKAGES)$' \
             | grep -vE '\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$' || true)
           if [ -n "$unexpected" ]; then
             echo "::error::unexpected permission in the merged manifest:"

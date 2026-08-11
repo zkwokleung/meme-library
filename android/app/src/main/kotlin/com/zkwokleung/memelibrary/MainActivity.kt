@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -72,6 +73,15 @@ class MainActivity : FlutterActivity() {
                     val shares = pendingShares.toList()
                     pendingShares.clear()
                     result.success(shares)
+                }
+                "app.getVersion" -> {
+                    result.success(packageManager.getPackageInfo(packageName, 0).versionName)
+                }
+                "updates.installApk" -> {
+                    result.success(installApk(call.argument<String>("path")))
+                }
+                "system.openUrl" -> {
+                    result.success(openUrl(call.argument<String>("url")))
                 }
                 "image.transcodeToJpeg" -> {
                     val path = call.argument<String>("path")
@@ -270,6 +280,58 @@ class MainActivity : FlutterActivity() {
             total += read
             if (total > MAX_IMPORT_BYTES) return false
             output.write(chunk, 0, read)
+        }
+    }
+
+    /**
+     * Launches the package installer for a downloaded update APK, first
+     * routing through this app's "Install unknown apps" toggle when that
+     * permission has not been granted yet.
+     */
+    private fun installApk(path: String?): String {
+        if (path == null) return "failed"
+        if (!packageManager.canRequestPackageInstalls()) {
+            return try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName"),
+                    )
+                )
+                "permissionRequested"
+            } catch (e: Exception) {
+                Log.w(TAG, "installApk: unknown-sources settings failed", e)
+                "failed"
+            }
+        }
+        return try {
+            val file = File(path)
+            if (!file.isFile) return "failed"
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            )
+            "started"
+        } catch (e: Exception) {
+            Log.w(TAG, "installApk failed", e)
+            "failed"
+        }
+    }
+
+    private fun openUrl(url: String?): Boolean {
+        if (url == null) return false
+        return try {
+            val uri = Uri.parse(url)
+            // Release metadata is remote input; https only, matching iOS.
+            if (!"https".equals(uri.scheme, ignoreCase = true)) return false
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "openUrl failed", e)
+            false
         }
     }
 
