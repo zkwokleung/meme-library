@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../domain/meme.dart';
+import '../net/capped_http.dart';
 import 'import_coordinator.dart';
 
 /// Streams an image over HTTPS and hands it to the import coordinator.
@@ -61,7 +61,7 @@ class UrlImportService {
           .send(http.Request('GET', uri))
           .timeout(timeout);
       if (response.statusCode != 200) {
-        _abandon(response);
+        abandonResponse(response);
         return ImportFailure(
           ImportFailureReason.network,
           'The server responded with status ${response.statusCode}.',
@@ -69,14 +69,18 @@ class UrlImportService {
       }
       final declared = response.contentLength;
       if (declared != null && declared > maxResponseBytes) {
-        _abandon(response);
+        abandonResponse(response);
         return const ImportFailure(
           ImportFailureReason.tooLarge,
           'The file is too large to download.',
         );
       }
 
-      final bytes = await _readCapped(response.stream).timeout(overallDeadline);
+      final bytes = await readCapped(
+        response.stream,
+        maxBytes: maxResponseBytes,
+        idleTimeout: timeout,
+      ).timeout(overallDeadline);
       if (bytes == null) {
         return const ImportFailure(
           ImportFailureReason.tooLarge,
@@ -113,23 +117,5 @@ class UrlImportService {
     if (host == 'localhost') return true;
     final address = InternetAddress.tryParse(host);
     return address != null && address.isLoopback;
-  }
-
-  /// Cancels the body of a response we decided not to read, releasing
-  /// its connection instead of leaving it pinned until process exit.
-  static void _abandon(http.StreamedResponse response) {
-    unawaited(response.stream.listen(null).cancel());
-  }
-
-  /// Accumulates the stream, returning `null` once the cap is exceeded.
-  Future<Uint8List?> _readCapped(http.ByteStream stream) async {
-    final builder = BytesBuilder(copy: false);
-    await for (final chunk in stream.timeout(timeout)) {
-      builder.add(chunk);
-      if (builder.length > maxResponseBytes) {
-        return null;
-      }
-    }
-    return builder.takeBytes();
   }
 }
