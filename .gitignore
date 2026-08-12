@@ -16,3 +16,6 @@ key.properties
 android/.gradle/
 ios/Flutter/ephemeral/
 ios/Pods/
+# The repo tracks no CocoaPods state; `flutter build ios` regenerates it.
+ios/Podfile
+ios/Podfile.lock
