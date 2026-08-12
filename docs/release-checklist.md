@@ -6,17 +6,25 @@ Pushing a `vX.Y.Z` tag runs both workflows from a clean checkout:
 
 - `CI` (format, analyze, tests, Android debug, iOS simulator) — also
   triggered by the tag itself.
-- `Release`: a verify job re-runs format/analyze/tests and fails unless
-  the tag matches `version:` in `pubspec.yaml`, then builds the APK,
-  AAB, and unsigned IPA and publishes them on the GitHub release.
-  Artifacts built without signing secrets are suffixed `-debugsigned`.
+- `Release`: a verify job re-runs format/analyze/tests, validates the
+  tag (`vMAJOR.MINOR.PATCH`, minor/patch ≤ 99) and checks the derived
+  `versionCode` (`major*10000 + minor*100 + patch`) exceeds the
+  previous release's, then builds the APK, AAB, and unsigned IPA with
+  the version stamped from the tag and publishes them on the GitHub
+  release. Artifacts built without signing secrets are suffixed
+  `-debugsigned`.
 - The in-app updater reads the **latest** GitHub release and picks the
   first `.apk` asset, so every release must attach exactly one APK.
 
 ## Versioning
 
-- [ ] `version:` bumped in `pubspec.yaml` (name+build, e.g. `1.0.1+2`)
-      before tagging — the release verify job enforces the match.
+- [ ] Releasing is just pushing a `vMAJOR.MINOR.PATCH` tag (minor and
+      patch ≤ 99); the workflow stamps the version and a monotonic
+      `versionCode` from it. Do **not** edit `version:` in
+      `pubspec.yaml` — it is a dev-only placeholder. Local builds show
+      `0.0.1` and the in-app updater routes them to the release page
+      instead of installing (a dev build's signing key would reject the
+      release APK anyway).
 
 ## Signing
 

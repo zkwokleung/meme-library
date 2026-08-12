@@ -12,6 +12,9 @@ jobs:
     name: Verify tag and tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      build_name: ${{ steps.version.outputs.build_name }}
+      build_number: ${{ steps.version.outputs.build_number }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -20,14 +23,63 @@ jobs:
           flutter-version: 3.41.7
           cache: true
       - run: flutter pub get
-      - name: Tag matches pubspec version
+      # The tag is the app version's source of truth; pubspec.yaml
+      # carries only a dev placeholder.
+      - name: Derive and validate version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$PUBSPEC_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match pubspec version $PUBSPEC_VERSION"
+          # No leading zeros: bash $(( )) would read them as octal.
+          SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          NAME="${GITHUB_REF_NAME#v}"
+          if ! echo "$NAME" | grep -qE "$SEMVER"; then
+            echo "::error::Tag $GITHUB_REF_NAME must be vMAJOR.MINOR.PATCH without leading zeros"
             exit 1
           fi
+          IFS=. read -r MAJ MIN PAT <<< "$NAME"
+          # versionCode = MAJ*10000 + MIN*100 + PAT stays monotonic only
+          # while minor and patch fit two digits.
+          if [ "$MIN" -gt 99 ] || [ "$PAT" -gt 99 ]; then
+            echo "::error::minor/patch must be <= 99 for the versionCode scheme"
+            exit 1
+          fi
+          CODE=$((10#$MAJ*10000 + 10#$MIN*100 + 10#$PAT))
+
+          # Android refuses over-the-top installs (the in-app updater's
+          # whole mechanism) unless versionCode strictly increases. Only
+          # a 404 (no previous release) may skip this guard; any other
+          # gh failure must not silently disable it.
+          set +e
+          PREV=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>&1)
+          GH_STATUS=$?
+          set -e
+          if [ "$GH_STATUS" -ne 0 ]; then
+            if echo "$PREV" | grep -q 'HTTP 404'; then
+              echo "::warning::No previous release; skipping the versionCode monotonicity check."
+              PREV=""
+            else
+              echo "::error::Could not query the previous release: $PREV"
+              exit 1
+            fi
+          fi
+          if [ "$PREV" = "$GITHUB_REF_NAME" ]; then
+            echo "::notice::Tag $GITHUB_REF_NAME is already the latest release; skipping the monotonicity check."
+          elif [ -n "$PREV" ]; then
+            P="${PREV#v}"
+            if echo "$P" | grep -qE "$SEMVER"; then
+              IFS=. read -r PM PN PP <<< "$P"
+              PCODE=$((10#$PM*10000 + 10#$PN*100 + 10#$PP))
+              if [ "$CODE" -le "$PCODE" ]; then
+                echo "::error::versionCode $CODE does not exceed previous release $PREV ($PCODE)"
+                exit 1
+              fi
+            else
+              echo "::warning::Previous release tag $PREV is not vMAJOR.MINOR.PATCH; skipping the monotonicity check."
+            fi
+          fi
+          echo "build_name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "build_number=$CODE" >> "$GITHUB_OUTPUT"
       - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter analyze
       - run: flutter test
@@ -73,9 +125,12 @@ jobs:
           } > android/key.properties
 
       - name: Build APK and app bundle
+        env:
+          BUILD_NAME: ${{ needs.verify.outputs.build_name }}
+          BUILD_NUMBER: ${{ needs.verify.outputs.build_number }}
         run: |
-          flutter build apk --release
-          flutter build appbundle --release
+          flutter build apk --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          flutter build appbundle --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
 
       - name: Collect artifacts
         run: |
@@ -107,7 +162,10 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
+        env:
+          BUILD_NAME: ${{ needs.verify.outputs.build_name }}
+          BUILD_NUMBER: ${{ needs.verify.outputs.build_number }}
+        run: flutter build ios --release --no-codesign --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
       - name: Package unsigned IPA
         run: |
           mkdir -p Payload dist
