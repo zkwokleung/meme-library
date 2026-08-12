@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../backup/backup_service.dart';
+import '../../services/platform/share_service.dart';
 import '../../services/platform/update_installer.dart';
 import '../../services/providers.dart';
 import '../../update/app_update_service.dart';

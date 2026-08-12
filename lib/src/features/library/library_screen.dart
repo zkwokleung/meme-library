@@ -5,12 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../domain/meme.dart';
+import '../../domain/tag.dart';
 import '../../services/platform/clipboard_service.dart';
+import '../../services/platform/share_service.dart';
 import '../../services/providers.dart';
 import '../detail/meme_detail_screen.dart';
 import '../import/import_controller.dart';
 import '../settings/settings_screen.dart';
 import '../tags/tag_manager_sheet.dart';
+import '../tags/tag_prompt.dart';
 import 'library_controller.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -121,77 +124,41 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  void _deleteWithUndo(Meme meme) {
-    deleteMemeWithUndo(
-      ScaffoldMessenger.of(context),
-      ref.read(libraryControllerProvider.notifier),
-      meme,
-    );
-  }
-
-  void _openQuickActions(Meme meme) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: const Text('Copy'),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await copyMemeToClipboard(context, ref, meme);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share_rounded),
-              title: const Text('Share'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                shareMeme(ref, meme);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded),
-              title: const Text('Delete'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _deleteWithUndo(meme);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(libraryControllerProvider);
+    final selectionMode = state.value?.selectionMode ?? false;
     ref.listen(importFeedbackProvider, (_, next) {
       final feedback = next.value;
       if (feedback != null) _showFeedback(feedback);
     });
 
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openImportSheet,
-        tooltip: 'Add meme',
-        child: const Icon(Icons.add_rounded),
-      ),
-      body: SafeArea(
-        child: switch (state) {
-          AsyncData(:final value) => _LibraryBody(
-            state: value,
-            searchController: _searchController,
-            onOpen: _openMeme,
-            onQuickActions: _openQuickActions,
-          ),
-          AsyncError() => const Center(child: Text('Something went wrong')),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+    return PopScope(
+      canPop: !selectionMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          ref.read(libraryControllerProvider.notifier).clearSelection();
+        }
+      },
+      child: Scaffold(
+        floatingActionButton: selectionMode
+            ? null
+            : FloatingActionButton(
+                onPressed: _openImportSheet,
+                tooltip: 'Add meme',
+                child: const Icon(Icons.add_rounded),
+              ),
+        body: SafeArea(
+          child: switch (state) {
+            AsyncData(:final value) => _LibraryBody(
+              state: value,
+              searchController: _searchController,
+              onOpen: _openMeme,
+            ),
+            AsyncError() => const Center(child: Text('Something went wrong')),
+            _ => const Center(child: CircularProgressIndicator()),
+          },
+        ),
       ),
     );
   }
@@ -202,13 +169,11 @@ class _LibraryBody extends ConsumerWidget {
     required this.state,
     required this.searchController,
     required this.onOpen,
-    required this.onQuickActions,
   });
 
   final LibraryState state;
   final TextEditingController searchController;
   final void Function(Meme) onOpen;
-  final void Function(Meme) onQuickActions;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -228,23 +193,36 @@ class _LibraryBody extends ConsumerWidget {
           SliverAppBar(
             floating: true,
             snap: true,
-            title: const Text('Meme Library'),
-            actions: [
-              IconButton(
-                tooltip: 'Tags',
-                icon: const Icon(Icons.sell_outlined),
-                onPressed: () => showTagManagerSheet(context),
-              ),
-              IconButton(
-                tooltip: 'Settings',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                ),
-              ),
-            ],
+            leading: state.selectionMode
+                ? IconButton(
+                    tooltip: 'Cancel selection',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => ref
+                        .read(libraryControllerProvider.notifier)
+                        .clearSelection(),
+                  )
+                : null,
+            title: state.selectionMode
+                ? Text('${state.selectedIds.length} selected')
+                : const Text('Meme Library'),
+            actions: state.selectionMode
+                ? [_BulkActionsMenu(selectedCount: state.selectedIds.length)]
+                : [
+                    IconButton(
+                      tooltip: 'Tags',
+                      icon: const Icon(Icons.sell_outlined),
+                      onPressed: () => showTagManagerSheet(context),
+                    ),
+                    IconButton(
+                      tooltip: 'Settings',
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      ),
+                    ),
+                  ],
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -326,10 +304,17 @@ class _LibraryBody extends ConsumerWidget {
                 itemCount: state.items.length,
                 itemBuilder: (context, index) {
                   final meme = state.items[index];
+                  final controller = ref.read(
+                    libraryControllerProvider.notifier,
+                  );
                   return _MemeTile(
                     meme: meme,
-                    onTap: () => onOpen(meme),
-                    onLongPress: () => onQuickActions(meme),
+                    selectionMode: state.selectionMode,
+                    selected: state.selectedIds.contains(meme.id),
+                    onTap: state.selectionMode
+                        ? () => controller.toggleSelected(meme.id)
+                        : () => onOpen(meme),
+                    onLongPress: () => controller.toggleSelected(meme.id),
                   );
                 },
               ),
@@ -347,14 +332,168 @@ class _LibraryBody extends ConsumerWidget {
   }
 }
 
+enum _BulkAction { copy, share, addTag, delete }
+
+/// The "more" menu shown in the title bar while selecting; every action
+/// operates on the current selection.
+class _BulkActionsMenu extends ConsumerWidget {
+  const _BulkActionsMenu({required this.selectedCount});
+
+  final int selectedCount;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canCopy = selectedCount == 1;
+    return PopupMenuButton<_BulkAction>(
+      tooltip: 'More options',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (action) => _handle(context, ref, action),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _BulkAction.copy,
+          enabled: canCopy,
+          child: ListTile(
+            enabled: canCopy,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.copy_rounded),
+            title: const Text('Copy'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _BulkAction.share,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.share_rounded),
+            title: Text('Share'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _BulkAction.addTag,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.sell_outlined),
+            title: Text('Add tag'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _BulkAction.delete,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline_rounded),
+            title: Text('Delete'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handle(
+    BuildContext context,
+    WidgetRef ref,
+    _BulkAction action,
+  ) async {
+    // Re-read live state: a reload may have pruned the selection since
+    // the menu was opened.
+    final controller = ref.read(libraryControllerProvider.notifier);
+    final state = ref.read(libraryControllerProvider).value;
+    if (state == null || state.selectedIds.isEmpty) {
+      _showSelectionGone(ScaffoldMessenger.of(context));
+      return;
+    }
+    final selected = state.selectedItems;
+
+    switch (action) {
+      case _BulkAction.copy:
+        if (selected.length != 1) return;
+        controller.clearSelection();
+        await copyMemeToClipboard(context, ref, selected.single);
+      case _BulkAction.share:
+        controller.clearSelection();
+        await shareMemes(context, ref, selected);
+      case _BulkAction.addTag:
+        await _addTagToSelection(context, ref, controller, selected);
+      case _BulkAction.delete:
+        deleteMemesWithUndo(ScaffoldMessenger.of(context), controller, selected);
+    }
+  }
+
+  void _showSelectionGone(ScaffoldMessengerState messenger) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('The selection is no longer available'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _addTagToSelection(
+    BuildContext context,
+    WidgetRef ref,
+    LibraryController controller,
+    List<Meme> selected,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final allTags = await ref.read(libraryRepositoryProvider).allTags();
+    if (!context.mounted) return;
+
+    // Suggest only tags missing from at least one selected meme.
+    var commonIds = {for (final tag in selected.first.tags) tag.id};
+    for (final meme in selected.skip(1)) {
+      commonIds = commonIds.intersection({for (final tag in meme.tags) tag.id});
+    }
+    final exclude = [
+      for (final tag in selected.first.tags)
+        if (commonIds.contains(tag.id)) tag,
+    ];
+
+    final name = await promptForTag(
+      context,
+      allTags: allTags,
+      exclude: exclude,
+    );
+    if (name == null || Tag.normalize(name).isEmpty) return;
+    // The menu (and its ref) dies with selection mode; a reload can have
+    // pruned the selection to empty while the dialog was open.
+    if (!context.mounted) return;
+
+    final live = ref.read(libraryControllerProvider).value;
+    if (live == null || live.selectedIds.isEmpty) {
+      _showSelectionGone(messenger);
+      return;
+    }
+    final count = await controller.addTagToSelected(name);
+    final trimmed = name.trim();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            count == 0
+                ? 'Already tagged'
+                : count == 1
+                ? 'Added "$trimmed" to 1 meme'
+                : 'Added "$trimmed" to $count memes',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+}
+
 class _MemeTile extends ConsumerWidget {
   const _MemeTile({
     required this.meme,
+    required this.selectionMode,
+    required this.selected,
     required this.onTap,
     required this.onLongPress,
   });
 
   final Meme meme;
+  final bool selectionMode;
+  final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -362,30 +501,63 @@ class _MemeTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final media = ref.watch(mediaStoreProvider);
     final label = meme.title ?? 'Meme';
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Semantics(
       label: label,
       button: true,
+      selected: selectionMode ? selected : null,
       child: Material(
         clipBehavior: Clip.antiAlias,
         borderRadius: BorderRadius.circular(12),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: colorScheme.surfaceContainerHighest,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-          child: Hero(
-            tag: 'meme-${meme.id}',
-            child: Image.file(
-              media.resolve(meme.thumbnailPath),
-              fit: BoxFit.cover,
-              // Downsamples static thumbnails; a harmless no-op for
-              // animated GIF thumbnails (the engine ignores the target
-              // size for multi-frame codecs), which MediaStore already
-              // bounds to <=400px and <=48 frames.
-              cacheWidth: 320,
-              errorBuilder: (_, _, _) =>
-                  const Center(child: Icon(Icons.broken_image_outlined)),
-            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Hero(
+                tag: 'meme-${meme.id}',
+                child: Image.file(
+                  media.resolve(meme.thumbnailPath),
+                  fit: BoxFit.cover,
+                  // Downsamples static thumbnails; a harmless no-op for
+                  // animated GIF thumbnails (the engine ignores the target
+                  // size for multi-frame codecs), which MediaStore already
+                  // bounds to <=400px and <=48 frames.
+                  cacheWidth: 320,
+                  errorBuilder: (_, _, _) =>
+                      const Center(child: Icon(Icons.broken_image_outlined)),
+                ),
+              ),
+              if (selectionMode) ...[
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colorScheme.primary.withValues(alpha: 0.24)
+                        : Colors.transparent,
+                    border: selected
+                        ? Border.all(color: colorScheme.primary, width: 3)
+                        : null,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.circle_outlined,
+                    color: selected
+                        ? colorScheme.primary
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -455,25 +627,28 @@ class _NoMatches extends StatelessWidget {
   }
 }
 
-/// Hides [meme], schedules its deletion, and offers Undo for the whole
-/// deletion window. Shared by the grid and the detail screen.
-void deleteMemeWithUndo(
+/// Hides [memes], schedules their deletion, and offers Undo for the whole
+/// deletion window. Shared by the grid's bulk menu and the detail screen.
+void deleteMemesWithUndo(
   ScaffoldMessengerState messenger,
   LibraryController controller,
-  Meme meme,
+  List<Meme> memes,
 ) {
   const undoWindow = Duration(seconds: 5);
-  controller.deleteWithUndo(meme, undoWindow: undoWindow);
+  final ids = controller.deleteManyWithUndo(memes, undoWindow: undoWindow);
+  if (ids.isEmpty) return;
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: const Text('Meme deleted'),
+        content: Text(
+          ids.length == 1 ? 'Meme deleted' : '${ids.length} memes deleted',
+        ),
         behavior: SnackBarBehavior.floating,
         duration: undoWindow,
         action: SnackBarAction(
           label: 'Undo',
-          onPressed: () => controller.undoDelete(meme.id),
+          onPressed: () => controller.undoDeleteMany(ids),
         ),
       ),
     );
@@ -525,14 +700,55 @@ Future<void> copyMemeToClipboard(
   }
 }
 
-Future<void> shareMeme(WidgetRef ref, Meme meme) {
+Future<void> shareMeme(BuildContext context, WidgetRef ref, Meme meme) =>
+    shareMemes(context, ref, [meme]);
+
+/// Opens the share sheet for the original images of [memes], skipping and
+/// reporting files that are missing on disk.
+Future<void> shareMemes(
+  BuildContext context,
+  WidgetRef ref,
+  List<Meme> memes,
+) async {
+  // Read everything up front: `ref` must not be touched after an await
+  // (the calling widget may be disposed by then).
+  final messenger = ScaffoldMessenger.of(context);
   final media = ref.read(mediaStoreProvider);
-  return ref
-      .read(shareServiceProvider)
-      .shareFile(
-        media.resolve(meme.relativePath).path,
-        mimeType: meme.mimeType,
+  final share = ref.read(shareServiceProvider);
+
+  final files = <ShareableFile>[];
+  var missing = false;
+  for (final meme in memes) {
+    final file = media.resolve(meme.relativePath);
+    if (await file.exists()) {
+      files.add(ShareableFile(file.path, mimeType: meme.mimeType));
+    } else {
+      missing = true;
+    }
+  }
+  if (missing) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('The image file is missing'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
+  }
+  if (files.isEmpty) return;
+  try {
+    await share.shareFiles(files);
+  } on Exception {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Something went wrong'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
 }
 
 /// Owns its text controller so it is disposed with the dialog.

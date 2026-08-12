@@ -7,9 +7,14 @@ class SharePlusShareService implements ShareService {
   const SharePlusShareService();
 
   @override
-  Future<void> shareFile(String absolutePath, {String? mimeType}) async {
+  Future<void> shareFiles(List<ShareableFile> files) async {
     await SharePlus.instance.share(
-      ShareParams(files: [XFile(absolutePath, mimeType: mimeType)]),
+      ShareParams(
+        files: [
+          for (final file in files)
+            XFile(file.absolutePath, mimeType: file.mimeType),
+        ],
+      ),
     );
   }
 }

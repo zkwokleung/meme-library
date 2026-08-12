@@ -7,6 +7,7 @@ import 'package:meme_library/src/domain/library_query.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
 import 'package:meme_library/src/services/platform/incoming_share_service.dart';
+import 'package:meme_library/src/services/platform/share_service.dart';
 import 'package:meme_library/src/services/providers.dart';
 import 'package:path/path.dart' as p;
 

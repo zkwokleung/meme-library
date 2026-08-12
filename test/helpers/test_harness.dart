@@ -43,8 +43,8 @@ class FakeShareService implements ShareService {
   final sharedPaths = <String>[];
 
   @override
-  Future<void> shareFile(String absolutePath, {String? mimeType}) async {
-    sharedPaths.add(absolutePath);
+  Future<void> shareFiles(List<ShareableFile> files) async {
+    sharedPaths.addAll([for (final file in files) file.absolutePath]);
   }
 }
 

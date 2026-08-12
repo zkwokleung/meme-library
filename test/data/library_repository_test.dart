@@ -269,6 +269,72 @@ void main() {
     expect((await repo.allTags()).length, 1);
   });
 
+  test('addTagToMemes tags every meme and bumps updatedAt', () async {
+    final a = await repo.insertMeme(await stagedMeme(seed: 90));
+    final b = await repo.insertMeme(await stagedMeme(seed: 91));
+
+    final tagged = await repo.addTagToMemes([a.id, b.id], 'bulk');
+
+    expect(tagged, 2);
+    final reloadedA = (await repo.memeById(a.id))!;
+    final reloadedB = (await repo.memeById(b.id))!;
+    expect(reloadedA.tags.map((t) => t.name), ['bulk']);
+    expect(reloadedB.tags.map((t) => t.name), ['bulk']);
+    expect(reloadedA.updatedAt.isBefore(a.updatedAt), isFalse);
+    // The tag is searchable on every tagged meme.
+    final found = await repo.query(const LibraryQuery(searchText: 'bulk'));
+    expect({for (final m in found.items) m.id}, {a.id, b.id});
+  });
+
+  test('addTagToMemes reuses an existing tag by normalized name', () async {
+    final existing = await repo.ensureTag('Reaction');
+    final a = await repo.insertMeme(await stagedMeme(seed: 92));
+
+    await repo.addTagToMemes([a.id], ' REACTION ');
+
+    expect((await repo.memeById(a.id))!.tags.single.id, existing.id);
+    expect((await repo.allTags()).length, 1);
+  });
+
+  test('addTagToMemes skips already-tagged and missing memes', () async {
+    final tag = await repo.ensureTag('dogs');
+    final tagged = await repo.insertMeme(
+      await stagedMeme(seed: 93, tags: [tag]),
+    );
+    final untagged = await repo.insertMeme(await stagedMeme(seed: 94));
+
+    final count = await repo.addTagToMemes(
+      [tagged.id, untagged.id, 'no-such-meme'],
+      'dogs',
+    );
+
+    expect(count, 1);
+    expect((await repo.memeById(tagged.id))!.tags, hasLength(1));
+    expect((await repo.memeById(untagged.id))!.tags.single.name, 'dogs');
+  });
+
+  test('addTagToMemes leaves no orphan tag when nothing gets tagged', () async {
+    expect(await repo.addTagToMemes(['gone-1', 'gone-2'], 'orphan'), 0);
+    expect(await repo.allTags(), isEmpty);
+
+    // Same when every meme already carries the tag.
+    final tag = await repo.ensureTag('kept');
+    final tagged = await repo.insertMeme(
+      await stagedMeme(seed: 96, tags: [tag]),
+    );
+    expect(await repo.addTagToMemes([tagged.id], 'KEPT'), 0);
+    expect((await repo.allTags()).length, 1);
+  });
+
+  test('addTagToMemes rejects an empty tag name', () async {
+    final a = await repo.insertMeme(await stagedMeme(seed: 95));
+    await expectLater(
+      repo.addTagToMemes([a.id], '   '),
+      throwsArgumentError,
+    );
+    expect((await repo.memeById(a.id))!.tags, isEmpty);
+  });
+
   test('delete removes record, search row, and files', () async {
     final saved = await repo.insertMeme(
       await stagedMeme(seed: 40, title: 'Gone soon'),

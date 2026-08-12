@@ -15,6 +15,7 @@ class LibraryState {
     this.searchText = '',
     this.tagIds = const {},
     this.loadingMore = false,
+    this.selectedIds = const {},
   });
 
   final List<Meme> items;
@@ -26,9 +27,19 @@ class LibraryState {
   final Set<String> tagIds;
   final bool loadingMore;
 
+  /// Ids picked in bulk-select mode; always a subset of [items].
+  final Set<String> selectedIds;
+
   bool get hasFilter => searchText.isNotEmpty || tagIds.isNotEmpty;
 
   bool get hasMore => items.length < totalCount;
+
+  bool get selectionMode => selectedIds.isNotEmpty;
+
+  /// Selected memes in grid order.
+  List<Meme> get selectedItems => items
+      .where((m) => selectedIds.contains(m.id))
+      .toList(growable: false);
 
   LibraryState copyWith({
     List<Meme>? items,
@@ -36,6 +47,7 @@ class LibraryState {
     String? searchText,
     Set<String>? tagIds,
     bool? loadingMore,
+    Set<String>? selectedIds,
   }) {
     return LibraryState(
       items: items ?? this.items,
@@ -43,6 +55,7 @@ class LibraryState {
       searchText: searchText ?? this.searchText,
       tagIds: tagIds ?? this.tagIds,
       loadingMore: loadingMore ?? this.loadingMore,
+      selectedIds: selectedIds ?? this.selectedIds,
     );
   }
 }
@@ -100,6 +113,11 @@ class LibraryController extends AsyncNotifier<LibraryState> {
       items: visible,
       totalCount: page.totalCount - (page.items.length - visible.length),
       loadingMore: false,
+      // Selection never outlives visibility: reloads and filter changes
+      // drop ids that are no longer on screen.
+      selectedIds: base.selectedIds.isEmpty
+          ? base.selectedIds
+          : base.selectedIds.intersection({for (final m in visible) m.id}),
     );
   }
 
@@ -148,8 +166,8 @@ class LibraryController extends AsyncNotifier<LibraryState> {
           );
       if (!ref.mounted || generation != _generation) return;
 
-      // Re-read the state: a synchronous mutation (deleteWithUndo) may
-      // have changed it while the query ran.
+      // Re-read the state: a synchronous mutation (deleteManyWithUndo)
+      // may have changed it while the query ran.
       final latest = state.value;
       if (latest == null) return;
       final incoming = page.items.where(
@@ -219,37 +237,84 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     }
   }
 
-  /// Hides the meme immediately and deletes it after [undoWindow] unless
-  /// [undoDelete] is called first.
-  void deleteWithUndo(
-    Meme meme, {
+  /// Margin the deletion timers get past the advertised undo window, so
+  /// an Undo tapped while the snackbar is still animating out can never
+  /// arrive after the deletes committed.
+  static const _undoGrace = Duration(seconds: 2);
+
+  /// Hides [memes] immediately and deletes them after [undoWindow] unless
+  /// [undoDeleteMany] is called first. Returns the hidden ids.
+  List<String> deleteManyWithUndo(
+    List<Meme> memes, {
     Duration undoWindow = const Duration(seconds: 5),
   }) {
     final current = state.value;
-    if (current == null || _pendingDeletes.containsKey(meme.id)) return;
+    if (current == null) return const [];
 
-    // Captured now: the timer may fire after this notifier is disposed.
+    // Captured now: the timers may fire after this notifier is disposed.
     final repository = ref.read(libraryRepositoryProvider);
-    _pendingDeletes[meme.id] = Timer(undoWindow, () async {
-      _pendingDeletes.remove(meme.id);
-      await repository.deleteMeme(meme.id);
-    });
+    final ids = <String>[];
+    for (final meme in memes) {
+      if (_pendingDeletes.containsKey(meme.id)) continue;
+      _pendingDeletes[meme.id] = Timer(undoWindow + _undoGrace, () async {
+        _pendingDeletes.remove(meme.id);
+        await repository.deleteMeme(meme.id);
+      });
+      ids.add(meme.id);
+    }
+    if (ids.isEmpty) return const [];
+
+    final hidden = ids.toSet();
     state = AsyncData(
       current.copyWith(
         items: current.items
-            .where((m) => m.id != meme.id)
+            .where((m) => !hidden.contains(m.id))
             .toList(growable: false),
-        totalCount: current.totalCount - 1,
+        totalCount: current.totalCount - ids.length,
+        selectedIds: current.selectedIds.difference(hidden),
       ),
     );
+    return ids;
   }
 
-  /// Cancels a pending deletion and restores the meme in place.
-  void undoDelete(String memeId) {
-    final timer = _pendingDeletes.remove(memeId);
-    if (timer == null) return;
-    timer.cancel();
-    unawaited(_reload());
+  /// Cancels a batch of pending deletions and restores them in one reload.
+  void undoDeleteMany(List<String> memeIds) {
+    var restored = false;
+    for (final id in memeIds) {
+      final timer = _pendingDeletes.remove(id);
+      if (timer != null) {
+        timer.cancel();
+        restored = true;
+      }
+    }
+    if (restored) unawaited(_reload());
+  }
+
+  /// Toggles selection of a visible meme; selecting the first id enters
+  /// selection mode, removing the last exits it.
+  void toggleSelected(String memeId) {
+    final current = state.value;
+    if (current == null) return;
+    if (!current.items.any((m) => m.id == memeId)) return;
+    final ids = Set<String>.of(current.selectedIds);
+    if (!ids.remove(memeId)) ids.add(memeId);
+    state = AsyncData(current.copyWith(selectedIds: ids));
+  }
+
+  void clearSelection() {
+    final current = state.value;
+    if (current == null || current.selectedIds.isEmpty) return;
+    state = AsyncData(current.copyWith(selectedIds: const {}));
+  }
+
+  /// Applies [tagName] to every selected meme and exits selection mode.
+  /// Returns how many memes gained the tag.
+  Future<int> addTagToSelected(String tagName) async {
+    final current = state.value;
+    if (current == null || current.selectedIds.isEmpty) return 0;
+    final ids = [for (final meme in current.selectedItems) meme.id];
+    clearSelection();
+    return ref.read(libraryRepositoryProvider).addTagToMemes(ids, tagName);
   }
 
   /// Runs any pending deletions immediately (e.g. before a backup, so an

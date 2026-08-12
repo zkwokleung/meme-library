@@ -50,6 +50,11 @@ abstract interface class LibraryRepository {
   /// Replaces the tag set of a meme.
   Future<Meme> setTags(String id, List<domain.Tag> tags);
 
+  /// Adds the tag named [tagName] (created if needed) to every meme in
+  /// [memeIds]. Memes that no longer exist or already carry the tag are
+  /// skipped. Returns the number of memes that gained the tag.
+  Future<int> addTagToMemes(List<String> memeIds, String tagName);
+
   /// Deletes the meme record and its stored files.
   Future<void> deleteMeme(String id);
 
@@ -276,6 +281,57 @@ class DriftLibraryRepository implements LibraryRepository {
       );
       await _writeFtsRow(updated);
       return updated;
+    });
+  }
+
+  @override
+  Future<int> addTagToMemes(List<String> memeIds, String tagName) {
+    return _db.transaction(() async {
+      final normalized = domain.Tag.normalize(tagName);
+      if (normalized.isEmpty) {
+        throw ArgumentError.value(tagName, 'tagName', 'Tag name is empty');
+      }
+
+      final rows = <MemeRow>[];
+      for (final chunk in _chunked(memeIds)) {
+        rows.addAll(
+          await (_db.select(_db.memes)..where((m) => m.id.isIn(chunk))).get(),
+        );
+      }
+      final tagMap = await _tagsFor([for (final row in rows) row.id]);
+      final targets = [
+        for (final row in rows)
+          if (!(tagMap[row.id] ?? const [])
+              .any((t) => t.normalized == normalized))
+            _toDomain(row, tagMap[row.id] ?? const []),
+      ];
+      // The tag row is only created once at least one meme needs it, so a
+      // fully vanished or already-tagged selection leaves no orphan tag.
+      if (targets.isEmpty) return 0;
+
+      final tag = await _ensureTagInTransaction(tagName);
+      final updatedAt = _clock().toUtc();
+      await _db.batch(
+        (batch) => batch.insertAll(_db.memeTags, [
+          for (final meme in targets)
+            MemeTagsCompanion.insert(memeId: meme.id, tagId: tag.id),
+        ], mode: InsertMode.insertOrIgnore),
+      );
+      for (final chunk in _chunked([for (final meme in targets) meme.id])) {
+        await (_db.update(_db.memes)..where((m) => m.id.isIn(chunk))).write(
+          MemesCompanion(updatedAt: Value(updatedAt.millisecondsSinceEpoch)),
+        );
+      }
+      for (final meme in targets) {
+        await _writeFtsRow(
+          meme.copyWith(
+            tags: [...meme.tags, tag]
+              ..sort((a, b) => a.normalized.compareTo(b.normalized)),
+            updatedAt: updatedAt,
+          ),
+        );
+      }
+      return targets.length;
     });
   }
 
@@ -527,17 +583,23 @@ class DriftLibraryRepository implements LibraryRepository {
     return tag;
   }
 
+  /// Chunked to stay far below SQLite's bound-variable limit.
+  Iterable<List<String>> _chunked(List<String> ids) sync* {
+    const chunkSize = 500;
+    for (var start = 0; start < ids.length; start += chunkSize) {
+      yield ids.sublist(
+        start,
+        start + chunkSize > ids.length ? ids.length : start + chunkSize,
+      );
+    }
+  }
+
   /// Chunked to stay far below SQLite's bound-variable limit even when
   /// called with every meme id (e.g. from [rebuildSearchIndex]).
   Future<Map<String, List<domain.Tag>>> _tagsFor(List<String> memeIds) async {
     if (memeIds.isEmpty) return const {};
-    const chunkSize = 500;
     final result = <String, List<domain.Tag>>{};
-    for (var start = 0; start < memeIds.length; start += chunkSize) {
-      final chunk = memeIds.sublist(
-        start,
-        start + chunkSize > memeIds.length ? memeIds.length : start + chunkSize,
-      );
+    for (final chunk in _chunked(memeIds)) {
       final placeholders = List.filled(chunk.length, '?').join(', ');
       final rows = await _db
           .customSelect(

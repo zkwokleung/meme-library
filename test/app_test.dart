@@ -227,6 +227,11 @@ void main() {
     expect(state.items.single.title, 'Distracted boyfriend');
   });
 
+  Future<void> openBulkMenu(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('delete with undo restores the meme', (tester) async {
     final meme = await tester.runAsync(() => harnessImport(harness, seed: 20));
 
@@ -235,6 +240,9 @@ void main() {
 
     await tester.longPress(find.bySemanticsLabel('Meme').first);
     await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsOneWidget);
+
+    await openBulkMenu(tester);
     await tester.tap(find.text('Delete'));
     await flushIo(tester);
 
@@ -249,6 +257,156 @@ void main() {
       await tester.runAsync(() => harness.repository.memeById(meme!.id)),
       isNotNull,
     );
+  });
+
+  testWidgets('bulk delete removes all selected and undo restores them', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await harnessImport(harness, seed: 23);
+      await harnessImport(harness, seed: 24);
+    });
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Meme').last);
+    await tester.pumpAndSettle();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await openBulkMenu(tester);
+    await tester.tap(find.text('Delete'));
+    await flushIo(tester);
+
+    expect(find.text('2 memes deleted'), findsOneWidget);
+    expect(harnessLibraryState(tester).items, isEmpty);
+
+    await tester.tap(find.text('Undo'));
+    await flushIo(tester);
+    expect(harnessLibraryState(tester).items, hasLength(2));
+    expect(await tester.runAsync(() => harness.repository.memeCount()), 2);
+  });
+
+  testWidgets('copy is disabled while more than one meme is selected', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await harnessImport(harness, seed: 25);
+      await harnessImport(harness, seed: 26);
+    });
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    await openBulkMenu(tester);
+    expect(
+      tester.widget<ListTile>(find.widgetWithText(ListTile, 'Copy')).enabled,
+      isTrue,
+    );
+    // Dismiss the menu, extend the selection, and re-open it.
+    await tester.tapAt(const Offset(5, 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Meme').last);
+    await tester.pumpAndSettle();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await openBulkMenu(tester);
+    expect(
+      tester.widget<ListTile>(find.widgetWithText(ListTile, 'Copy')).enabled,
+      isFalse,
+    );
+  });
+
+  testWidgets('bulk share hands every selected file to the share sheet', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await harnessImport(harness, seed: 27);
+      await harnessImport(harness, seed: 28);
+    });
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Meme').last);
+    await tester.pumpAndSettle();
+
+    await openBulkMenu(tester);
+    await tester.tap(find.text('Share'));
+    await flushIo(tester);
+
+    expect(harness.share.sharedPaths, hasLength(2));
+    expect(harnessLibraryState(tester).selectedIds, isEmpty);
+  });
+
+  testWidgets('bulk add tag applies the tag to every selected meme', (
+    tester,
+  ) async {
+    final (a, b) = await tester.runAsync(() async {
+      final a = await harnessImport(harness, seed: 21);
+      final b = await harnessImport(harness, seed: 22);
+      return (a, b);
+    }).then((r) => r!);
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Meme').last);
+    await tester.pumpAndSettle();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await openBulkMenu(tester);
+    await tester.tap(find.text('Add tag'));
+    await flushIo(tester);
+
+    await tester.enterText(find.byType(TextField).last, 'reaction');
+    await tester.tap(find.text('Add'));
+    await flushIo(tester);
+
+    expect(find.text('Added "reaction" to 2 memes'), findsOneWidget);
+    expect(harnessLibraryState(tester).selectionMode, isFalse);
+    final tagsA = await tester.runAsync(
+      () async => (await harness.repository.memeById(a.id))!.tags,
+    );
+    final tagsB = await tester.runAsync(
+      () async => (await harness.repository.memeById(b.id))!.tags,
+    );
+    expect(tagsA!.map((t) => t.name), ['reaction']);
+    expect(tagsB!.map((t) => t.name), ['reaction']);
+  });
+
+  testWidgets('selection mode exits via the close button and deselection', (
+    tester,
+  ) async {
+    await tester.runAsync(() => harnessImport(harness, seed: 29));
+
+    await tester.pumpWidget(app());
+    await flushIo(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+
+    await tester.tap(find.byTooltip('Cancel selection'));
+    await tester.pumpAndSettle();
+    expect(find.text('Meme Library'), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+
+    // Tapping the only selected tile also leaves selection mode.
+    await tester.longPress(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Meme').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Meme Library'), findsOneWidget);
   });
 
   testWidgets('tag chips filter the grid', (tester) async {

@@ -6,6 +6,7 @@ import '../../domain/meme.dart';
 import '../../domain/tag.dart';
 import '../library/library_controller.dart';
 import '../library/library_screen.dart';
+import '../tags/tag_prompt.dart';
 
 class MemeDetailScreen extends ConsumerStatefulWidget {
   const MemeDetailScreen({super.key, required this.memeId});
@@ -86,7 +87,11 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
     if (meme == null) return;
     final allTags = await ref.read(libraryRepositoryProvider).allTags();
     if (!mounted) return;
-    final name = await _promptForTag(allTags, meme.tags);
+    final name = await promptForTag(
+      context,
+      allTags: allTags,
+      exclude: meme.tags,
+    );
     if (name == null || Tag.normalize(name).isEmpty) return;
 
     final repository = ref.read(libraryRepositoryProvider);
@@ -94,61 +99,6 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
       final tag = await repository.ensureTag(name);
       return repository.setTags(meme.id, [...meme.tags, tag]);
     });
-  }
-
-  Future<String?> _promptForTag(List<Tag> allTags, List<Tag> current) {
-    final existingIds = {for (final tag in current) tag.id};
-    final suggestions = allTags
-        .where((tag) => !existingIds.contains(tag.id))
-        .toList(growable: false);
-
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        var input = '';
-        return AlertDialog(
-          title: const Text('Add tag'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                autofocus: true,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(hintText: 'Tag name'),
-                onChanged: (value) => input = value,
-                onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-              ),
-              if (suggestions.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final tag in suggestions.take(8))
-                      ActionChip(
-                        label: Text(tag.name),
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(tag.name),
-                      ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(input),
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Future<void> _removeTag(Tag tag) async {
@@ -172,7 +122,7 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(libraryControllerProvider.notifier);
     Navigator.of(context).pop();
-    deleteMemeWithUndo(messenger, controller, meme);
+    deleteMemesWithUndo(messenger, controller, [meme]);
   }
 
   @override
@@ -198,7 +148,9 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
             IconButton(
               tooltip: 'Share',
               icon: const Icon(Icons.share_rounded),
-              onPressed: meme == null ? null : () => shareMeme(ref, meme),
+              onPressed: meme == null
+                  ? null
+                  : () => shareMeme(context, ref, meme),
             ),
             IconButton(
               tooltip: 'Delete',
