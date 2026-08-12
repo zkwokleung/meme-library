@@ -275,6 +275,28 @@ void main() {
   );
 
   testWidgets(
+    'a dev build is routed to the release page, not the installer',
+    (tester) async {
+      harness.updateInstaller.version = devPlaceholderVersionName;
+      updates.check = const UpdateAvailable(_update);
+
+      await tester.pumpWidget(app());
+      await tester.pump();
+      await tester.tap(find.text('Check for updates'));
+      await pumpUntilFound(tester, find.text('View release'));
+      await tester.tap(find.text('View release'));
+      await pumpUntil(
+        tester,
+        () => harness.updateInstaller.openedUrls.isNotEmpty,
+      );
+
+      expect(harness.updateInstaller.openedUrls, [_releasePageUrl]);
+      expect(harness.updateInstaller.installedPaths, isEmpty);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
     'a release without an apk asset falls back to the page',
     (tester) async {
       updates.check = const UpdateAvailable(

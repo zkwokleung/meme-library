@@ -161,9 +161,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) return;
     // iOS cannot install an app from within an app; the release page is
     // the best it can do. Android falls back to it too when a release
-    // carries no APK asset.
+    // carries no APK asset, and on dev builds — their signing key differs
+    // from the release key, so an over-the-top install would only fail.
     if (defaultTargetPlatform == TargetPlatform.iOS ||
-        info.apkDownloadUrl == null) {
+        info.apkDownloadUrl == null ||
+        _installedVersion == devPlaceholderVersionName) {
       final view = await _confirm(
         title: 'Update available',
         message: 'Version ${info.tagName} is available.',

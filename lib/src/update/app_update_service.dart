@@ -8,6 +8,11 @@ import 'package:path/path.dart' as p;
 
 import '../net/capped_http.dart';
 
+/// pubspec.yaml's placeholder `version:`, mirrored: only the release
+/// workflow stamps a real tag-derived version, so a build reporting this
+/// is not an installable target for the updater.
+const devPlaceholderVersionName = '0.0.1';
+
 /// A `major.minor.patch` version. Release tags carry no build number, so
 /// build metadata (`+N`) is ignored when comparing.
 class SemVer implements Comparable<SemVer> {
