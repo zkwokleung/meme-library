@@ -413,7 +413,11 @@ class _BulkActionsMenu extends ConsumerWidget {
       case _BulkAction.addTag:
         await _addTagToSelection(context, ref, controller, selected);
       case _BulkAction.delete:
-        deleteMemesWithUndo(ScaffoldMessenger.of(context), controller, selected);
+        deleteMemesWithUndo(
+          ScaffoldMessenger.of(context),
+          controller,
+          selected,
+        );
     }
   }
 

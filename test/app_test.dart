@@ -348,11 +348,13 @@ void main() {
   testWidgets('bulk add tag applies the tag to every selected meme', (
     tester,
   ) async {
-    final (a, b) = await tester.runAsync(() async {
-      final a = await harnessImport(harness, seed: 21);
-      final b = await harnessImport(harness, seed: 22);
-      return (a, b);
-    }).then((r) => r!);
+    final (a, b) = await tester
+        .runAsync(() async {
+          final a = await harnessImport(harness, seed: 21);
+          final b = await harnessImport(harness, seed: 22);
+          return (a, b);
+        })
+        .then((r) => r!);
 
     await tester.pumpWidget(app());
     await flushIo(tester);

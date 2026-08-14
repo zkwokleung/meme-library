@@ -301,8 +301,9 @@ class DriftLibraryRepository implements LibraryRepository {
       final tagMap = await _tagsFor([for (final row in rows) row.id]);
       final targets = [
         for (final row in rows)
-          if (!(tagMap[row.id] ?? const [])
-              .any((t) => t.normalized == normalized))
+          if (!(tagMap[row.id] ?? const []).any(
+            (t) => t.normalized == normalized,
+          ))
             _toDomain(row, tagMap[row.id] ?? const []),
       ];
       // The tag row is only created once at least one meme needs it, so a

@@ -25,7 +25,8 @@ void main() {
     return container.read(libraryControllerProvider.future);
   }
 
-  LibraryState state() => container.read(libraryControllerProvider).requireValue;
+  LibraryState state() =>
+      container.read(libraryControllerProvider).requireValue;
 
   LibraryController controller() =>
       container.read(libraryControllerProvider.notifier);

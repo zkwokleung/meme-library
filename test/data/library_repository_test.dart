@@ -303,10 +303,11 @@ void main() {
     );
     final untagged = await repo.insertMeme(await stagedMeme(seed: 94));
 
-    final count = await repo.addTagToMemes(
-      [tagged.id, untagged.id, 'no-such-meme'],
-      'dogs',
-    );
+    final count = await repo.addTagToMemes([
+      tagged.id,
+      untagged.id,
+      'no-such-meme',
+    ], 'dogs');
 
     expect(count, 1);
     expect((await repo.memeById(tagged.id))!.tags, hasLength(1));
@@ -328,10 +329,7 @@ void main() {
 
   test('addTagToMemes rejects an empty tag name', () async {
     final a = await repo.insertMeme(await stagedMeme(seed: 95));
-    await expectLater(
-      repo.addTagToMemes([a.id], '   '),
-      throwsArgumentError,
-    );
+    await expectLater(repo.addTagToMemes([a.id], '   '), throwsArgumentError);
     expect((await repo.memeById(a.id))!.tags, isEmpty);
   });
 

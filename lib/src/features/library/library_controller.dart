@@ -37,9 +37,8 @@ class LibraryState {
   bool get selectionMode => selectedIds.isNotEmpty;
 
   /// Selected memes in grid order.
-  List<Meme> get selectedItems => items
-      .where((m) => selectedIds.contains(m.id))
-      .toList(growable: false);
+  List<Meme> get selectedItems =>
+      items.where((m) => selectedIds.contains(m.id)).toList(growable: false);
 
   LibraryState copyWith({
     List<Meme>? items,
