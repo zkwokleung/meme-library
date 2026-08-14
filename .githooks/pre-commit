@@ -1,0 +1,5 @@
+#!/bin/sh
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.dart')
+[ -z "$files" ] && exit 0
+printf '%s' "$files" | tr '\n' '\0' | xargs -0 dart format
+printf '%s' "$files" | tr '\n' '\0' | xargs -0 git add
