@@ -113,7 +113,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ),
             NavigationDestination(
               icon: _AddDestinationIcon(),
-              label: 'Add',
+              label: '',
               tooltip: 'Add meme',
             ),
             NavigationDestination(
@@ -134,18 +134,34 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 }
 
 /// Filled circle that makes the Add action stand out from the plain
-/// destination icons around it.
+/// destination icons around it. It keeps the standard 24dp icon footprint
+/// so the bar lays out normally, while painting a larger circle that pokes
+/// just above the bar's top edge.
 class _AddDestinationIcon extends StatelessWidget {
   const _AddDestinationIcon();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
-      child: Icon(Icons.add_rounded, color: scheme.onPrimary),
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: OverflowBox(
+        maxWidth: 56,
+        maxHeight: 56,
+        child: Transform.translate(
+          offset: const Offset(0, -6),
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.add_rounded, color: scheme.onPrimary, size: 28),
+          ),
+        ),
+      ),
     );
   }
 }
