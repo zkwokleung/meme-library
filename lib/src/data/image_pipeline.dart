@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'image_validator.dart';
 import 'media_store.dart';
+import 'sticker_images.dart';
 
 /// Validated metadata plus the content hash, in a form that can cross an
 /// isolate boundary.
@@ -85,6 +86,11 @@ abstract interface class ImagePipeline {
     ValidatedImage image, {
     required int maxDimension,
   });
+
+  /// Prepares one meme for sticker export.
+  ///
+  /// Throws [StickerImageException] for animated or undecodable sources.
+  Future<StickerSource> stickerSource(Uint8List bytes);
 }
 
 /// Production pipeline: keeps decoding, resizing, and hashing off the UI
@@ -109,6 +115,10 @@ class IsolateImagePipeline implements ImagePipeline {
     required int maxDimension,
   }) =>
       Isolate.run(() => encodeThumbnailSync(image, maxDimension: maxDimension));
+
+  @override
+  Future<StickerSource> stickerSource(Uint8List bytes) =>
+      Isolate.run(() => stickerSourceSync(bytes));
 }
 
 /// Runs the same work on the calling isolate.
@@ -129,4 +139,8 @@ class InlineImagePipeline implements ImagePipeline {
     ValidatedImage image, {
     required int maxDimension,
   }) async => encodeThumbnailSync(image, maxDimension: maxDimension);
+
+  @override
+  Future<StickerSource> stickerSource(Uint8List bytes) async =>
+      stickerSourceSync(bytes);
 }
