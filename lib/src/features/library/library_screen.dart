@@ -10,9 +10,6 @@ import '../../services/platform/clipboard_service.dart';
 import '../../services/platform/share_service.dart';
 import '../../services/providers.dart';
 import '../detail/meme_detail_screen.dart';
-import '../import/import_controller.dart';
-import '../settings/settings_screen.dart';
-import '../tags/tag_manager_sheet.dart';
 import '../tags/tag_prompt.dart';
 import 'library_controller.dart';
 
@@ -25,95 +22,28 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  final _scrollController = ScrollController();
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _showFeedback(ImportFeedback feedback) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(feedback.message),
-          behavior: SnackBarBehavior.floating,
-        ),
+  Future<void> _focusSearch() async {
+    // Scroll before focusing so the keyboard inset doesn't fight the
+    // animation.
+    if (_scrollController.hasClients && _scrollController.offset > 0) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
       );
-  }
-
-  Future<void> _importFromClipboard() async {
-    await ref.read(importControllerProvider).importFromClipboard();
-  }
-
-  Future<void> _importFromGallery() async {
-    await ref.read(importControllerProvider).importFromGallery();
-  }
-
-  Future<void> _importFromUrl() async {
-    final url = await _promptForUrl();
-    if (url == null || url.trim().isEmpty) return;
-    await ref.read(importControllerProvider).importFromUrl(url);
-  }
-
-  Future<String?> _promptForUrl() {
-    return showDialog<String>(
-      context: context,
-      builder: (context) => const _UrlPromptDialog(),
-    );
-  }
-
-  void _openImportSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        // Three tiles plus the footer overflow a short sheet at large text
-        // scales.
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library_rounded),
-                title: const Text('Save from photos'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _importFromGallery();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.content_paste_rounded),
-                title: const Text('Paste image'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _importFromClipboard();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.link_rounded),
-                title: const Text('Save from link'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _importFromUrl();
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Text(
-                  'You can also share images to Meme Library from any app.',
-                  style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    }
+    if (mounted) _searchFocusNode.requestFocus();
   }
 
   void _openMeme(Meme meme) {
@@ -128,10 +58,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(libraryControllerProvider);
     final selectionMode = state.value?.selectionMode ?? false;
-    ref.listen(importFeedbackProvider, (_, next) {
-      final feedback = next.value;
-      if (feedback != null) _showFeedback(feedback);
-    });
 
     return PopScope(
       canPop: !selectionMode,
@@ -144,15 +70,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         floatingActionButton: selectionMode
             ? null
             : FloatingActionButton(
-                onPressed: _openImportSheet,
-                tooltip: 'Add meme',
-                child: const Icon(Icons.add_rounded),
+                onPressed: _focusSearch,
+                tooltip: 'Search',
+                child: const Icon(Icons.search_rounded),
               ),
         body: SafeArea(
           child: switch (state) {
             AsyncData(:final value) => _LibraryBody(
               state: value,
               searchController: _searchController,
+              searchFocusNode: _searchFocusNode,
+              scrollController: _scrollController,
               onOpen: _openMeme,
             ),
             AsyncError() => const Center(child: Text('Something went wrong')),
@@ -168,11 +96,15 @@ class _LibraryBody extends ConsumerWidget {
   const _LibraryBody({
     required this.state,
     required this.searchController,
+    required this.searchFocusNode,
+    required this.scrollController,
     required this.onOpen,
   });
 
   final LibraryState state;
   final TextEditingController searchController;
+  final FocusNode searchFocusNode;
+  final ScrollController scrollController;
   final void Function(Meme) onOpen;
 
   @override
@@ -189,6 +121,7 @@ class _LibraryBody extends ConsumerWidget {
         return false;
       },
       child: CustomScrollView(
+        controller: scrollController,
         slivers: [
           SliverAppBar(
             floating: true,
@@ -207,22 +140,7 @@ class _LibraryBody extends ConsumerWidget {
                 : const Text('Meme Library'),
             actions: state.selectionMode
                 ? [_BulkActionsMenu(selectedCount: state.selectedIds.length)]
-                : [
-                    IconButton(
-                      tooltip: 'Tags',
-                      icon: const Icon(Icons.sell_outlined),
-                      onPressed: () => showTagManagerSheet(context),
-                    ),
-                    IconButton(
-                      tooltip: 'Settings',
-                      icon: const Icon(Icons.settings_outlined),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const SettingsScreen(),
-                        ),
-                      ),
-                    ),
-                  ],
+                : null,
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -231,6 +149,7 @@ class _LibraryBody extends ConsumerWidget {
                 label: 'Search',
                 child: SearchBar(
                   controller: searchController,
+                  focusNode: searchFocusNode,
                   hintText: 'Search',
                   elevation: const WidgetStatePropertyAll(0),
                   leading: const Icon(Icons.search_rounded),
@@ -752,48 +671,5 @@ Future<void> shareMemes(
           behavior: SnackBarBehavior.floating,
         ),
       );
-  }
-}
-
-/// Owns its text controller so it is disposed with the dialog.
-class _UrlPromptDialog extends StatefulWidget {
-  const _UrlPromptDialog();
-
-  @override
-  State<_UrlPromptDialog> createState() => _UrlPromptDialogState();
-}
-
-class _UrlPromptDialogState extends State<_UrlPromptDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Save from link'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        keyboardType: TextInputType.url,
-        textInputAction: TextInputAction.done,
-        decoration: const InputDecoration(hintText: 'https://…'),
-        onSubmitted: (value) => Navigator.of(context).pop(value),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Save'),
-        ),
-      ],
-    );
   }
 }

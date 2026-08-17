@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/import/import_controller.dart';
-import '../features/library/library_screen.dart';
+import 'home_shell.dart';
 
 class MemeLibraryApp extends ConsumerStatefulWidget {
   const MemeLibraryApp({super.key, this.bindIncomingShares = true});
@@ -55,7 +55,7 @@ class _MemeLibraryAppState extends ConsumerState<MemeLibraryApp> {
       debugShowCheckedModeBanner: false,
       theme: theme(Brightness.light),
       darkTheme: theme(Brightness.dark),
-      home: const LibraryScreen(),
+      home: const HomeShell(),
     );
   }
 }

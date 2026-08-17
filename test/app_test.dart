@@ -40,6 +40,16 @@ void main() {
     }
   }
 
+  Future<void> openAddSheet(WidgetTester tester) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Add'),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows the empty library state', (tester) async {
     await tester.pumpWidget(app());
     await flushIo(tester);
@@ -63,8 +73,7 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Paste image'));
     await pumpUntilFound(tester, find.text('Added to your library'));
 
@@ -106,8 +115,7 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Save from photos'));
     await pumpUntilFound(tester, find.text('Added to your library'));
 
@@ -128,8 +136,7 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Save from photos'));
     await flushIo(tester);
 
@@ -155,8 +162,7 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Save from photos'));
     await pumpUntilFound(tester, find.text('2 added · 1 already saved'));
 
@@ -171,13 +177,11 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Paste image'));
     await pumpUntilFound(tester, find.text('Added to your library'));
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Paste image'));
     await pumpUntilFound(tester, find.text('Already in your library'));
 
@@ -189,8 +193,7 @@ void main() {
     await tester.pumpWidget(app());
     await flushIo(tester);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await openAddSheet(tester);
     await tester.tap(find.text('Paste image'));
     await pumpUntilFound(
       tester,
@@ -370,7 +373,7 @@ void main() {
     await flushIo(tester);
 
     await tester.enterText(find.byType(TextField).last, 'reaction');
-    await tester.tap(find.text('Add'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await flushIo(tester);
 
     expect(find.text('Added "reaction" to 2 memes'), findsOneWidget);

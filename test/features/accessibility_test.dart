@@ -48,7 +48,12 @@ void main() {
 
     await tester.pumpWidget(app());
     await settle(tester);
-    await tester.tap(find.byTooltip('Settings'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Settings'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
