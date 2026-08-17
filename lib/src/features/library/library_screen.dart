@@ -10,6 +10,7 @@ import '../../services/platform/clipboard_service.dart';
 import '../../services/platform/share_service.dart';
 import '../../services/providers.dart';
 import '../detail/meme_detail_screen.dart';
+import '../stickers/pack_chooser_sheet.dart';
 import '../tags/tag_prompt.dart';
 import 'library_controller.dart';
 
@@ -251,7 +252,7 @@ class _LibraryBody extends ConsumerWidget {
   }
 }
 
-enum _BulkAction { copy, share, addTag, delete }
+enum _BulkAction { copy, share, addTag, addToStickerPack, delete }
 
 /// The "more" menu shown in the title bar while selecting; every action
 /// operates on the current selection.
@@ -295,6 +296,14 @@ class _BulkActionsMenu extends ConsumerWidget {
           ),
         ),
         const PopupMenuItem(
+          value: _BulkAction.addToStickerPack,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.emoji_emotions_outlined),
+            title: Text('Add to sticker pack'),
+          ),
+        ),
+        const PopupMenuItem(
           value: _BulkAction.delete,
           child: ListTile(
             contentPadding: EdgeInsets.zero,
@@ -331,6 +340,8 @@ class _BulkActionsMenu extends ConsumerWidget {
         await shareMemes(context, ref, selected);
       case _BulkAction.addTag:
         await _addTagToSelection(context, ref, controller, selected);
+      case _BulkAction.addToStickerPack:
+        await _addSelectionToStickerPack(context, ref, controller, selected);
       case _BulkAction.delete:
         deleteMemesWithUndo(
           ScaffoldMessenger.of(context),
@@ -399,6 +410,58 @@ class _BulkActionsMenu extends ConsumerWidget {
                 ? 'Added "$trimmed" to 1 meme'
                 : 'Added "$trimmed" to $count memes',
           ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _addSelectionToStickerPack(
+    BuildContext context,
+    WidgetRef ref,
+    LibraryController controller,
+    List<Meme> selected,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Static stickers only: exclude animated memes rather than silently
+    // flattening them to their first frame.
+    final staticIds = [
+      for (final meme in selected)
+        if (!meme.thumbnailPath.endsWith('.gif')) meme.id,
+    ];
+    final skippedAnimated = selected.length - staticIds.length;
+    if (staticIds.isEmpty) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Animated memes cannot become stickers'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+
+    final packId = await showPackChooser(context);
+    if (packId == null) return;
+
+    final outcome = await ref
+        .read(stickerPackRepositoryProvider)
+        .addMemes(packId, staticIds);
+    controller.clearSelection();
+
+    final parts = [
+      if (outcome.added > 0) '${outcome.added} added',
+      if (skippedAnimated > 0) '$skippedAnimated animated skipped',
+      if (outcome.skippedDuplicates > 0)
+        '${outcome.skippedDuplicates} already in the pack',
+      if (outcome.skippedOverCapacity > 0)
+        '${outcome.skippedOverCapacity} over the pack limit',
+    ];
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(parts.join(', ')),
           behavior: SnackBarBehavior.floating,
         ),
       );
