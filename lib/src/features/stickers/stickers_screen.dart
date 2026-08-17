@@ -103,6 +103,9 @@ class _PackTile extends ConsumerWidget {
       ),
       trailing: PopupMenuButton<_PackAction>(
         tooltip: 'Pack options',
+        // Escape the nested stickers navigator, whose overlay would leave
+        // the bottom bar tappable under the barrier.
+        useRootNavigator: true,
         onSelected: (action) => _handle(context, ref, action),
         itemBuilder: (context) => const [
           PopupMenuItem(value: _PackAction.rename, child: Text('Rename')),

@@ -52,6 +52,91 @@ void main() {
     expect(find.text('Meme Library'), findsOneWidget);
   });
 
+  testWidgets('the sticker pack screen keeps the bottom bar visible', (
+    tester,
+  ) async {
+    await tester.runAsync(() => harness.stickerPacks.createPack('Reactions'));
+
+    await tester.pumpWidget(app());
+    await settle(tester);
+
+    await tester.tap(destination('Stickers'));
+    await pumpUntilFound(tester, find.text('Reactions'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Reactions'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add memes'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+
+    // Back pops the pack screen, not the tab.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('New sticker pack'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
+
+  testWidgets('the emoji sheet blocks the bottom bar', (tester) async {
+    await tester.runAsync(() async {
+      final meme = await harnessImport(harness, seed: 1);
+      final pack = await harness.stickerPacks.createPack('Reactions');
+      await harness.stickerPacks.addMemes(pack.id, [meme.id]);
+    });
+
+    await tester.pumpWidget(app());
+    await settle(tester);
+    await tester.tap(destination('Stickers'));
+    await pumpUntilFound(tester, find.text('Reactions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reactions'));
+    await pumpUntilFound(tester, find.byTooltip('Add memes'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Image).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Save emojis'), findsOneWidget);
+
+    // The sheet lives on the root navigator, so it (and its barrier) covers
+    // the navigation bar: this tap cannot switch tabs.
+    await tester.tap(destination('Library'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save emojis'), findsOneWidget);
+    final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(bar.selectedIndex, 1);
+
+    await tester.tap(find.text('Save emojis'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save emojis'), findsNothing);
+    expect(find.byTooltip('Add memes'), findsOneWidget);
+  });
+
+  testWidgets('back on another tab leaves the sticker stack alone', (
+    tester,
+  ) async {
+    await tester.runAsync(() => harness.stickerPacks.createPack('Reactions'));
+
+    await tester.pumpWidget(app());
+    await settle(tester);
+    await tester.tap(destination('Stickers'));
+    await pumpUntilFound(tester, find.text('Reactions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reactions'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add memes'), findsOneWidget);
+
+    await tester.tap(destination('Library'));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Meme Library'), findsOneWidget);
+
+    // The hidden sticker stack was not popped by back on the library tab.
+    await tester.tap(destination('Stickers'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add memes'), findsOneWidget);
+  });
+
   testWidgets('library search text survives a tab round-trip', (tester) async {
     await tester.runAsync(() => harnessImport(harness, seed: 1));
 

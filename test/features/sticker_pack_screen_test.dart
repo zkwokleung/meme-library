@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/domain/meme.dart';
+import 'package:meme_library/src/features/library/library_controller.dart';
 import 'package:meme_library/src/features/stickers/meme_picker_screen.dart';
 import 'package:meme_library/src/features/stickers/sticker_pack_screen.dart';
 import 'package:meme_library/src/import/import_coordinator.dart';
@@ -48,10 +49,13 @@ void main() {
     await tester.pumpWidget(app(packId));
     await pumpUntil(tester, () => find.byType(Image).evaluate().length == 2);
 
-    final export = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Add to WhatsApp'),
+    await tester.tap(find.byTooltip('Add to...'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add to...'), findsOneWidget);
+    final option = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, 'WhatsApp'),
     );
-    expect(export.onPressed, isNull);
+    expect(option.enabled, isFalse);
   });
 
   testWidgets('exports to WhatsApp and reports success', (tester) async {
@@ -64,7 +68,9 @@ void main() {
     await tester.pumpWidget(app(packId));
     await pumpUntil(tester, () => find.byType(Image).evaluate().length == 3);
 
-    await tester.tap(find.text('Add to WhatsApp'));
+    await tester.tap(find.byTooltip('Add to...'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('WhatsApp'));
     await pumpUntilFound(tester, find.text('Added to WhatsApp'));
 
     expect(harness.stickerPackInstaller.enabledPacks, hasLength(1));
@@ -86,7 +92,9 @@ void main() {
     await tester.pumpWidget(app(packId));
     await pumpUntil(tester, () => find.byType(Image).evaluate().length == 3);
 
-    await tester.tap(find.text('Add to WhatsApp'));
+    await tester.tap(find.byTooltip('Add to...'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('WhatsApp'));
     await pumpUntilFound(
       tester,
       find.text('Install WhatsApp to add sticker packs'),
@@ -143,6 +151,74 @@ void main() {
       () => harness.stickerPacks.packById(packId),
     );
     expect(pack!.items, hasLength(2));
+  });
+
+  testWidgets('the picker narrows the grid with search', (tester) async {
+    final packId = await tester
+        .runAsync(() async {
+          final pack = await harness.stickerPacks.createPack('Pack');
+          final doge = await harnessImport(harness, seed: 1);
+          await harnessImport(harness, seed: 2);
+          await harness.repository.updateMetadata(
+            doge.id,
+            title: () => 'doge wow',
+          );
+          return pack.id;
+        })
+        .then((id) => id!);
+
+    await tester.pumpWidget(app(packId));
+    await pumpUntilFound(tester, find.byTooltip('Add memes'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Add memes'));
+    await pumpUntil(tester, () => find.byType(Image).evaluate().length == 2);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(SearchBar), 'doge');
+    await pumpUntil(tester, () => find.byType(Image).evaluate().length == 1);
+
+    await tester.enterText(find.byType(SearchBar), 'no such meme');
+    await pumpUntilFound(tester, find.text('No memes match your search'));
+
+    await tester.enterText(find.byType(SearchBar), '');
+    await pumpUntil(tester, () => find.byType(Image).evaluate().length == 2);
+  });
+
+  testWidgets('the picker hides memes pending delete-with-undo', (
+    tester,
+  ) async {
+    final packId = await tester
+        .runAsync(() async {
+          final pack = await harness.stickerPacks.createPack('Pack');
+          await harnessImport(harness, seed: 1);
+          await harnessImport(harness, seed: 2);
+          return pack.id;
+        })
+        .then((id) => id!);
+
+    await tester.pumpWidget(app(packId));
+    await pumpUntilFound(tester, find.byTooltip('Add memes'));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(StickerPackScreen)),
+    );
+    final controller = container.read(libraryControllerProvider.notifier);
+    await pumpUntil(
+      tester,
+      () => container.read(libraryControllerProvider).value != null,
+    );
+    final doomed = container.read(libraryControllerProvider).value!.items.first;
+    final hiddenIds = controller.deleteManyWithUndo([doomed]);
+
+    await tester.tap(find.byTooltip('Add memes'));
+    await pumpUntil(tester, () => find.byType(Image).evaluate().length == 1);
+    expect(find.byType(Image), findsOneWidget);
+
+    // Cancel the scheduled delete so no timer outlives the test.
+    controller.undoDeleteMany(hiddenIds);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the sticker sheet sets emojis and removes stickers', (

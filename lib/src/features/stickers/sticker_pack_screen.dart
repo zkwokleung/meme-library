@@ -24,16 +24,15 @@ class StickerPackScreen extends ConsumerWidget {
         body: const Center(child: Text('This pack no longer exists')),
       );
     }
+    final canExport = pack.items.length >= StickerPack.minStickers;
     return Scaffold(
       appBar: AppBar(
         title: Text(pack.name),
         actions: [
-          TextButton.icon(
-            onPressed: pack.items.length >= StickerPack.minStickers
-                ? () => _exportToWhatsApp(context, ref)
-                : null,
+          IconButton(
+            tooltip: 'Add to...',
             icon: const Icon(Icons.ios_share),
-            label: const Text('Add to WhatsApp'),
+            onPressed: () => _showAddToSheet(context, ref, canExport),
           ),
         ],
       ),
@@ -90,6 +89,45 @@ class StickerPackScreen extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
+  }
+
+  /// Destination chooser; WhatsApp is the only target today, but the sheet
+  /// leaves room for more.
+  Future<void> _showAddToSheet(
+    BuildContext context,
+    WidgetRef ref,
+    bool canExport,
+  ) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      // Escape the nested stickers navigator, whose overlay would leave
+      // the bottom bar tappable under the barrier.
+      useRootNavigator: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Add to...',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat_outlined),
+              title: const Text('WhatsApp'),
+              enabled: canExport,
+              onTap: () => Navigator.of(sheetContext).pop('whatsapp'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == 'whatsapp' && context.mounted) {
+      await _exportToWhatsApp(context, ref);
+    }
   }
 
   Future<void> _exportToWhatsApp(BuildContext context, WidgetRef ref) async {
@@ -176,6 +214,9 @@ class _StickerTile extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      // Escape the nested stickers navigator, whose overlay would leave
+      // the bottom bar tappable under the barrier.
+      useRootNavigator: true,
       builder: (_) => _StickerSheet(
         initialEmojis: item.emojis,
         onEmojis: (emojis) =>

@@ -21,12 +21,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   // Pages: 0 Library, 1 Stickers, 2 Tags, 3 Settings.
   // Destinations add "Add" at index 2, which is an action, not a page.
   static const _addDestination = 2;
+  static const _stickersPage = 1;
 
   var _pageIndex = 0;
 
   // Built on first visit: an eager IndexedStack would run SettingsScreen's
   // platform calls at startup.
   final _built = {0};
+
+  /// The Stickers tab hosts its own navigation (pack detail, meme picker)
+  /// inside the shell, so the bottom bar stays visible throughout.
+  final _stickersNavigatorKey = GlobalKey<NavigatorState>();
 
   int _destinationFor(int page) => page < _addDestination ? page : page + 1;
 
@@ -75,13 +80,23 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         _built.contains(index) ? builder() : const SizedBox.shrink();
 
     return PopScope(
-      // Back on another tab returns to the library first; the library's own
-      // PopScope still guards selection mode.
+      // Back pops the stickers tab's own stack first, then returns to the
+      // library; the library's own PopScope still guards selection mode.
       canPop: _pageIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _pageIndex != 0) {
-          setState(() => _pageIndex = 0);
+        if (didPop) return;
+        // Handled here rather than with NavigatorPopHandler: that widget's
+        // PopScope stays registered while its IndexedStack child is
+        // offstage, so a route left open on the hidden stickers stack
+        // would hijack back on other tabs.
+        final stickersNavigator = _stickersNavigatorKey.currentState;
+        if (_pageIndex == _stickersPage &&
+            stickersNavigator != null &&
+            stickersNavigator.canPop()) {
+          stickersNavigator.maybePop();
+          return;
         }
+        setState(() => _pageIndex = 0);
       },
       child: Scaffold(
         // A nested messenger keeps the tab Scaffolds off the root messenger,
@@ -91,7 +106,16 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             index: _pageIndex,
             children: [
               const LibraryScreen(),
-              page(1, () => const StickersScreen()),
+              page(
+                _stickersPage,
+                () => Navigator(
+                  key: _stickersNavigatorKey,
+                  onGenerateRoute: (settings) => MaterialPageRoute<void>(
+                    settings: settings,
+                    builder: (_) => const StickersScreen(),
+                  ),
+                ),
+              ),
               page(2, () => TagsScreen(onTagSelected: _showTag)),
               page(3, () => const SettingsScreen()),
             ],
