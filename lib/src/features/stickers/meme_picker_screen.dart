@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../domain/library_query.dart';
 import '../../domain/meme.dart';
+import '../library/library_controller.dart';
+import '../library/meme_pager.dart';
 
 /// Full-screen multi-select over the library; pops with the picked meme
 /// ids, or null on back. Animated memes cannot become static stickers, so
@@ -20,36 +23,29 @@ class MemePickerScreen extends ConsumerStatefulWidget {
 }
 
 class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
-  static const _pageSize = 60;
+  late final MemePager _pager = MemePager(
+    repository: ref.read(libraryRepositoryProvider),
+    onUpdate: () {
+      if (mounted) setState(() {});
+    },
+    // Memes mid delete-with-undo must not be added to a pack; the delete
+    // would silently cascade them back out.
+    hiddenIds: () =>
+        ref.read(libraryControllerProvider.notifier).pendingDeleteIds,
+  );
 
-  final _items = <Meme>[];
   final _selected = <String>{};
-  var _totalCount = 0;
-  var _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadMore();
+    unawaited(_pager.refresh());
   }
 
-  Future<void> _loadMore() async {
-    if (_loading) return;
-    _loading = true;
-    try {
-      final page = await ref
-          .read(libraryRepositoryProvider)
-          .query(LibraryQuery(limit: _pageSize, offset: _items.length));
-      if (!mounted) return;
-      setState(() {
-        _items.addAll(
-          page.items.where((m) => !_items.any((e) => e.id == m.id)),
-        );
-        _totalCount = page.items.isEmpty ? _items.length : page.totalCount;
-      });
-    } finally {
-      _loading = false;
-    }
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
   }
 
   bool _isAnimated(Meme meme) => meme.thumbnailPath.endsWith('.gif');
@@ -71,9 +67,28 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
                 : () => Navigator.of(context).pop(_selected.toList()),
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(64),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: SearchBar(
+              hintText: 'Search memes',
+              leading: const Icon(Icons.search),
+              onChanged: _pager.setSearchText,
+            ),
+          ),
+        ),
       ),
-      body: _items.isEmpty
-          ? const Center(child: Text('No memes in the library yet'))
+      body: !_pager.initialized
+          ? const Center(child: CircularProgressIndicator())
+          : _pager.items.isEmpty
+          ? Center(
+              child: Text(
+                _pager.searchText.isEmpty
+                    ? 'No memes in the library yet'
+                    : 'No memes match your search',
+              ),
+            )
           : GridView.builder(
               padding: const EdgeInsets.all(8),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -81,13 +96,13 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
               ),
-              itemCount: _items.length,
+              itemCount: _pager.items.length,
               itemBuilder: (context, index) {
-                if (index >= _items.length - _pageSize ~/ 2 &&
-                    _items.length < _totalCount) {
-                  _loadMore();
+                if (index >= _pager.items.length - _pager.pageSize ~/ 2 &&
+                    _pager.hasMore) {
+                  unawaited(_pager.loadMore());
                 }
-                final meme = _items[index];
+                final meme = _pager.items[index];
                 final animated = _isAnimated(meme);
                 final selected = _selected.contains(meme.id);
                 return GestureDetector(

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../domain/library_query.dart';
 import '../../domain/meme.dart';
 import '../../domain/tag.dart';
+import 'meme_pager.dart';
 
 /// Immutable view state for the library grid.
 class LibraryState {
@@ -65,13 +65,22 @@ class LibraryController extends AsyncNotifier<LibraryState> {
 
   /// Memes hidden from view and scheduled for deletion.
   final _pendingDeletes = <String, Timer>{};
-  Timer? _searchDebounce;
+
+  /// Ids inside the delete-with-undo window; other meme views (the sticker
+  /// picker) exclude these so a doomed meme cannot be acted on.
+  Set<String> get pendingDeleteIds => Set.unmodifiable(_pendingDeletes.keys);
   Timer? _changeDebounce;
-  int _generation = 0;
+  late MemePager _pager;
 
   @override
   Future<LibraryState> build() async {
     final repository = ref.watch(libraryRepositoryProvider);
+    _pager = MemePager(
+      repository: repository,
+      onUpdate: _publish,
+      pageSize: pageSize,
+      hiddenIds: () => _pendingDeletes.keys.toSet(),
+    );
     final subscription = repository.changes.listen((_) {
       _changeDebounce?.cancel();
       _changeDebounce = Timer(const Duration(milliseconds: 100), () {
@@ -80,8 +89,8 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     });
     ref.onDispose(() {
       subscription.cancel();
-      _searchDebounce?.cancel();
       _changeDebounce?.cancel();
+      _pager.dispose();
       // The UI already reported these memes as deleted; commit rather
       // than silently resurrect them on next launch.
       for (final entry in _pendingDeletes.entries) {
@@ -90,33 +99,36 @@ class LibraryController extends AsyncNotifier<LibraryState> {
       }
       _pendingDeletes.clear();
     });
-    return _fetch(const LibraryState());
+    await _pager.refresh();
+    return _snapshot(selectedIds: const {});
   }
 
-  Future<LibraryState> _fetch(LibraryState base, {int? minimumItems}) async {
-    final repository = ref.read(libraryRepositoryProvider);
-    final limit = minimumItems == null || minimumItems < pageSize
-        ? pageSize
-        : minimumItems;
-    final page = await repository.query(
-      LibraryQuery(
-        searchText: base.searchText.isEmpty ? null : base.searchText,
-        tagIds: base.tagIds,
-        limit: limit,
-      ),
-    );
-    final visible = page.items
+  /// The pager filters pending deletes at fetch time; the second filter
+  /// here covers memes hidden by [deleteManyWithUndo] after their page was
+  /// already loaded.
+  LibraryState _snapshot({required Set<String> selectedIds}) {
+    final visible = _pager.items
         .where((m) => !_pendingDeletes.containsKey(m.id))
         .toList(growable: false);
-    return base.copyWith(
+    final hiddenInPage = _pager.items.length - visible.length;
+    return LibraryState(
       items: visible,
-      totalCount: page.totalCount - (page.items.length - visible.length),
-      loadingMore: false,
+      totalCount: _pager.totalCount - hiddenInPage,
+      searchText: _pager.searchText,
+      tagIds: _pager.tagIds,
+      loadingMore: _pager.loadingMore,
       // Selection never outlives visibility: reloads and filter changes
       // drop ids that are no longer on screen.
-      selectedIds: base.selectedIds.isEmpty
-          ? base.selectedIds
-          : base.selectedIds.intersection({for (final m in visible) m.id}),
+      selectedIds: selectedIds.isEmpty
+          ? selectedIds
+          : selectedIds.intersection({for (final m in visible) m.id}),
+    );
+  }
+
+  void _publish() {
+    if (!ref.mounted) return;
+    state = AsyncData(
+      _snapshot(selectedIds: state.value?.selectedIds ?? const {}),
     );
   }
 
@@ -125,14 +137,10 @@ class LibraryController extends AsyncNotifier<LibraryState> {
   Future<void> _reload() async {
     final current = state.value;
     if (current == null) return;
-    final generation = ++_generation;
     try {
-      final next = await _fetch(
-        current,
+      await _pager.refresh(
         minimumItems: current.items.length + _pendingDeletes.length,
       );
-      if (!ref.mounted || generation != _generation) return;
-      state = AsyncData(next);
     } catch (e, stackTrace) {
       // Keep showing the previous data; surface the error only when
       // there is nothing to show.
@@ -143,92 +151,33 @@ class LibraryController extends AsyncNotifier<LibraryState> {
   }
 
   Future<void> loadMore() async {
-    final current = state.value;
-    if (current == null || current.loadingMore || !current.hasMore) return;
-    state = AsyncData(current.copyWith(loadingMore: true));
-    // Participate in the current generation without claiming a new one:
-    // a filter change mid-flight must win, not be cancelled by paging.
-    final generation = _generation;
-
     try {
-      final page = await ref
-          .read(libraryRepositoryProvider)
-          .query(
-            LibraryQuery(
-              searchText: current.searchText.isEmpty
-                  ? null
-                  : current.searchText,
-              tagIds: current.tagIds,
-              limit: pageSize,
-              offset: current.items.length,
-            ),
-          );
-      if (!ref.mounted || generation != _generation) return;
-
-      // Re-read the state: a synchronous mutation (deleteManyWithUndo)
-      // may have changed it while the query ran.
-      final latest = state.value;
-      if (latest == null) return;
-      final incoming = page.items.where(
-        (m) =>
-            !_pendingDeletes.containsKey(m.id) &&
-            !latest.items.any((existing) => existing.id == m.id),
-      );
-      final items = [...latest.items, ...incoming];
-      // An empty page means the count and reality disagree (e.g. hidden
-      // pending deletions); stop paging rather than spin forever.
-      final total = page.items.isEmpty
-          ? items.length
-          : (page.totalCount - _pendingDeletes.length).clamp(
-              items.length,
-              1 << 30,
-            );
-      state = AsyncData(
-        latest.copyWith(items: items, totalCount: total, loadingMore: false),
-      );
+      await _pager.loadMore();
     } catch (_) {
-      if (!ref.mounted) return;
-      final latest = state.value;
-      if (latest != null) {
-        state = AsyncData(latest.copyWith(loadingMore: false));
-      }
+      // Keep the current grid; the pager already reset its loading flag.
     }
   }
 
   /// Debounced free-text search.
-  void setSearchText(String text) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
-      final current = state.value;
-      if (current == null || current.searchText == text.trim()) return;
-      unawaited(_apply(current.copyWith(searchText: text.trim())));
-    });
-  }
+  void setSearchText(String text) => _pager.setSearchText(text);
 
   Future<void> toggleTag(String tagId) async {
-    final current = state.value;
-    if (current == null) return;
-    final tagIds = Set<String>.of(current.tagIds);
+    final tagIds = Set<String>.of(_pager.tagIds);
     if (!tagIds.remove(tagId)) tagIds.add(tagId);
-    await _apply(current.copyWith(tagIds: tagIds));
+    await _applyQuery(tagIds: tagIds);
   }
 
   Future<void> clearFilters() async {
-    final current = state.value;
-    if (current == null) return;
-    await _apply(const LibraryState());
+    clearSelection();
+    await _applyQuery(searchText: '', tagIds: const {});
   }
 
   /// Applies a new filter. The previous grid stays visible while the new
   /// results load, avoiding a loading flash on every keystroke.
-  Future<void> _apply(LibraryState base) async {
-    // A stale search debounce must not re-apply old text over this change.
-    _searchDebounce?.cancel();
-    final generation = ++_generation;
+  Future<void> _applyQuery({String? searchText, Set<String>? tagIds}) async {
+    _pager.setQuery(searchText: searchText, tagIds: tagIds);
     try {
-      final next = await _fetch(base);
-      if (!ref.mounted || generation != _generation) return;
-      state = AsyncData(next);
+      await _pager.refresh();
     } catch (e, stackTrace) {
       if (ref.mounted && state.value == null) {
         state = AsyncError(e, stackTrace);
@@ -263,16 +212,7 @@ class LibraryController extends AsyncNotifier<LibraryState> {
     }
     if (ids.isEmpty) return const [];
 
-    final hidden = ids.toSet();
-    state = AsyncData(
-      current.copyWith(
-        items: current.items
-            .where((m) => !hidden.contains(m.id))
-            .toList(growable: false),
-        totalCount: current.totalCount - ids.length,
-        selectedIds: current.selectedIds.difference(hidden),
-      ),
-    );
+    _publish();
     return ids;
   }
 
