@@ -1285,17 +1285,706 @@ class MemeTagsCompanion extends UpdateCompanion<MemeTagRow> {
   }
 }
 
+class $StickerPacksTable extends StickerPacks
+    with TableInfo<$StickerPacksTable, StickerPackRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StickerPacksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _publisherMeta = const VerificationMeta(
+    'publisher',
+  );
+  @override
+  late final GeneratedColumn<String> publisher = GeneratedColumn<String>(
+    'publisher',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    publisher,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sticker_packs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StickerPackRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('publisher')) {
+      context.handle(
+        _publisherMeta,
+        publisher.isAcceptableOrUnknown(data['publisher']!, _publisherMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_publisherMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StickerPackRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StickerPackRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      publisher: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}publisher'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $StickerPacksTable createAlias(String alias) {
+    return $StickerPacksTable(attachedDatabase, alias);
+  }
+}
+
+class StickerPackRow extends DataClass implements Insertable<StickerPackRow> {
+  final String id;
+  final String name;
+  final String publisher;
+  final int createdAt;
+  final int updatedAt;
+  const StickerPackRow({
+    required this.id,
+    required this.name,
+    required this.publisher,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['publisher'] = Variable<String>(publisher);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  StickerPacksCompanion toCompanion(bool nullToAbsent) {
+    return StickerPacksCompanion(
+      id: Value(id),
+      name: Value(name),
+      publisher: Value(publisher),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory StickerPackRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StickerPackRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      publisher: serializer.fromJson<String>(json['publisher']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'publisher': serializer.toJson<String>(publisher),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  StickerPackRow copyWith({
+    String? id,
+    String? name,
+    String? publisher,
+    int? createdAt,
+    int? updatedAt,
+  }) => StickerPackRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    publisher: publisher ?? this.publisher,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  StickerPackRow copyWithCompanion(StickerPacksCompanion data) {
+    return StickerPackRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      publisher: data.publisher.present ? data.publisher.value : this.publisher,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StickerPackRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('publisher: $publisher, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, publisher, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StickerPackRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.publisher == this.publisher &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class StickerPacksCompanion extends UpdateCompanion<StickerPackRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> publisher;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const StickerPacksCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.publisher = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  StickerPacksCompanion.insert({
+    required String id,
+    required String name,
+    required String publisher,
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       publisher = Value(publisher),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<StickerPackRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? publisher,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (publisher != null) 'publisher': publisher,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  StickerPacksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? publisher,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return StickerPacksCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      publisher: publisher ?? this.publisher,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (publisher.present) {
+      map['publisher'] = Variable<String>(publisher.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StickerPacksCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('publisher: $publisher, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $StickerPackItemsTable extends StickerPackItems
+    with TableInfo<$StickerPackItemsTable, StickerPackItemRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StickerPackItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _packIdMeta = const VerificationMeta('packId');
+  @override
+  late final GeneratedColumn<String> packId = GeneratedColumn<String>(
+    'pack_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES sticker_packs (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _memeIdMeta = const VerificationMeta('memeId');
+  @override
+  late final GeneratedColumn<String> memeId = GeneratedColumn<String>(
+    'meme_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES memes (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _emojisMeta = const VerificationMeta('emojis');
+  @override
+  late final GeneratedColumn<String> emojis = GeneratedColumn<String>(
+    'emojis',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [packId, memeId, position, emojis];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sticker_pack_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StickerPackItemRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('pack_id')) {
+      context.handle(
+        _packIdMeta,
+        packId.isAcceptableOrUnknown(data['pack_id']!, _packIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_packIdMeta);
+    }
+    if (data.containsKey('meme_id')) {
+      context.handle(
+        _memeIdMeta,
+        memeId.isAcceptableOrUnknown(data['meme_id']!, _memeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memeIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('emojis')) {
+      context.handle(
+        _emojisMeta,
+        emojis.isAcceptableOrUnknown(data['emojis']!, _emojisMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {packId, memeId};
+  @override
+  StickerPackItemRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StickerPackItemRow(
+      packId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pack_id'],
+      )!,
+      memeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}meme_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      emojis: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}emojis'],
+      ),
+    );
+  }
+
+  @override
+  $StickerPackItemsTable createAlias(String alias) {
+    return $StickerPackItemsTable(attachedDatabase, alias);
+  }
+}
+
+class StickerPackItemRow extends DataClass
+    implements Insertable<StickerPackItemRow> {
+  final String packId;
+  final String memeId;
+  final int position;
+
+  /// JSON array of at most three emoji strings.
+  final String? emojis;
+  const StickerPackItemRow({
+    required this.packId,
+    required this.memeId,
+    required this.position,
+    this.emojis,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['pack_id'] = Variable<String>(packId);
+    map['meme_id'] = Variable<String>(memeId);
+    map['position'] = Variable<int>(position);
+    if (!nullToAbsent || emojis != null) {
+      map['emojis'] = Variable<String>(emojis);
+    }
+    return map;
+  }
+
+  StickerPackItemsCompanion toCompanion(bool nullToAbsent) {
+    return StickerPackItemsCompanion(
+      packId: Value(packId),
+      memeId: Value(memeId),
+      position: Value(position),
+      emojis: emojis == null && nullToAbsent
+          ? const Value.absent()
+          : Value(emojis),
+    );
+  }
+
+  factory StickerPackItemRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StickerPackItemRow(
+      packId: serializer.fromJson<String>(json['packId']),
+      memeId: serializer.fromJson<String>(json['memeId']),
+      position: serializer.fromJson<int>(json['position']),
+      emojis: serializer.fromJson<String?>(json['emojis']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'packId': serializer.toJson<String>(packId),
+      'memeId': serializer.toJson<String>(memeId),
+      'position': serializer.toJson<int>(position),
+      'emojis': serializer.toJson<String?>(emojis),
+    };
+  }
+
+  StickerPackItemRow copyWith({
+    String? packId,
+    String? memeId,
+    int? position,
+    Value<String?> emojis = const Value.absent(),
+  }) => StickerPackItemRow(
+    packId: packId ?? this.packId,
+    memeId: memeId ?? this.memeId,
+    position: position ?? this.position,
+    emojis: emojis.present ? emojis.value : this.emojis,
+  );
+  StickerPackItemRow copyWithCompanion(StickerPackItemsCompanion data) {
+    return StickerPackItemRow(
+      packId: data.packId.present ? data.packId.value : this.packId,
+      memeId: data.memeId.present ? data.memeId.value : this.memeId,
+      position: data.position.present ? data.position.value : this.position,
+      emojis: data.emojis.present ? data.emojis.value : this.emojis,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StickerPackItemRow(')
+          ..write('packId: $packId, ')
+          ..write('memeId: $memeId, ')
+          ..write('position: $position, ')
+          ..write('emojis: $emojis')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(packId, memeId, position, emojis);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StickerPackItemRow &&
+          other.packId == this.packId &&
+          other.memeId == this.memeId &&
+          other.position == this.position &&
+          other.emojis == this.emojis);
+}
+
+class StickerPackItemsCompanion extends UpdateCompanion<StickerPackItemRow> {
+  final Value<String> packId;
+  final Value<String> memeId;
+  final Value<int> position;
+  final Value<String?> emojis;
+  final Value<int> rowid;
+  const StickerPackItemsCompanion({
+    this.packId = const Value.absent(),
+    this.memeId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.emojis = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  StickerPackItemsCompanion.insert({
+    required String packId,
+    required String memeId,
+    required int position,
+    this.emojis = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : packId = Value(packId),
+       memeId = Value(memeId),
+       position = Value(position);
+  static Insertable<StickerPackItemRow> custom({
+    Expression<String>? packId,
+    Expression<String>? memeId,
+    Expression<int>? position,
+    Expression<String>? emojis,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (packId != null) 'pack_id': packId,
+      if (memeId != null) 'meme_id': memeId,
+      if (position != null) 'position': position,
+      if (emojis != null) 'emojis': emojis,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  StickerPackItemsCompanion copyWith({
+    Value<String>? packId,
+    Value<String>? memeId,
+    Value<int>? position,
+    Value<String?>? emojis,
+    Value<int>? rowid,
+  }) {
+    return StickerPackItemsCompanion(
+      packId: packId ?? this.packId,
+      memeId: memeId ?? this.memeId,
+      position: position ?? this.position,
+      emojis: emojis ?? this.emojis,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (packId.present) {
+      map['pack_id'] = Variable<String>(packId.value);
+    }
+    if (memeId.present) {
+      map['meme_id'] = Variable<String>(memeId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (emojis.present) {
+      map['emojis'] = Variable<String>(emojis.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StickerPackItemsCompanion(')
+          ..write('packId: $packId, ')
+          ..write('memeId: $memeId, ')
+          ..write('position: $position, ')
+          ..write('emojis: $emojis, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $MemesTable memes = $MemesTable(this);
   late final $TagsTable tags = $TagsTable(this);
   late final $MemeTagsTable memeTags = $MemeTagsTable(this);
+  late final $StickerPacksTable stickerPacks = $StickerPacksTable(this);
+  late final $StickerPackItemsTable stickerPackItems = $StickerPackItemsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [memes, tags, memeTags];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    memes,
+    tags,
+    memeTags,
+    stickerPacks,
+    stickerPackItems,
+  ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
     WritePropagation(
@@ -1311,6 +2000,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('meme_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'sticker_packs',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('sticker_pack_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'memes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('sticker_pack_items', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -1369,6 +2072,26 @@ final class $$MemesTableReferences
     ).filter((f) => f.memeId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_memeTagsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$StickerPackItemsTable, List<StickerPackItemRow>>
+  _stickerPackItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.stickerPackItems,
+    aliasName: 'memes__id__sticker_pack_items__meme_id',
+  );
+
+  $$StickerPackItemsTableProcessedTableManager get stickerPackItemsRefs {
+    final manager = $$StickerPackItemsTableTableManager(
+      $_db,
+      $_db.stickerPackItems,
+    ).filter((f) => f.memeId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _stickerPackItemsRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1469,6 +2192,31 @@ class $$MemesTableFilterComposer extends Composer<_$AppDatabase, $MemesTable> {
           }) => $$MemeTagsTableFilterComposer(
             $db: $db,
             $table: $db.memeTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> stickerPackItemsRefs(
+    Expression<bool> Function($$StickerPackItemsTableFilterComposer f) f,
+  ) {
+    final $$StickerPackItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.stickerPackItems,
+      getReferencedColumn: (t) => t.memeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPackItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.stickerPackItems,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1640,6 +2388,31 @@ class $$MemesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> stickerPackItemsRefs<T extends Object>(
+    Expression<T> Function($$StickerPackItemsTableAnnotationComposer a) f,
+  ) {
+    final $$StickerPackItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.stickerPackItems,
+      getReferencedColumn: (t) => t.memeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPackItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.stickerPackItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MemesTableTableManager
@@ -1655,7 +2428,7 @@ class $$MemesTableTableManager
           $$MemesTableUpdateCompanionBuilder,
           (MemeRow, $$MemesTableReferences),
           MemeRow,
-          PrefetchHooks Function({bool memeTagsRefs})
+          PrefetchHooks Function({bool memeTagsRefs, bool stickerPackItemsRefs})
         > {
   $$MemesTableTableManager(_$AppDatabase db, $MemesTable table)
     : super(
@@ -1742,28 +2515,63 @@ class $$MemesTableTableManager
                     (e.readTable(table), $$MemesTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({memeTagsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (memeTagsRefs) db.memeTags],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (memeTagsRefs)
-                    await $_getPrefetchedData<MemeRow, $MemesTable, MemeTagRow>(
-                      currentTable: table,
-                      referencedTable: $$MemesTableReferences
-                          ._memeTagsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$MemesTableReferences(db, table, p0).memeTagsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.memeId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({memeTagsRefs = false, stickerPackItemsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (memeTagsRefs) db.memeTags,
+                    if (stickerPackItemsRefs) db.stickerPackItems,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (memeTagsRefs)
+                        await $_getPrefetchedData<
+                          MemeRow,
+                          $MemesTable,
+                          MemeTagRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MemesTableReferences
+                              ._memeTagsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MemesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).memeTagsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memeId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (stickerPackItemsRefs)
+                        await $_getPrefetchedData<
+                          MemeRow,
+                          $MemesTable,
+                          StickerPackItemRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MemesTableReferences
+                              ._stickerPackItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MemesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).stickerPackItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memeId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -1780,7 +2588,7 @@ typedef $$MemesTableProcessedTableManager =
       $$MemesTableUpdateCompanionBuilder,
       (MemeRow, $$MemesTableReferences),
       MemeRow,
-      PrefetchHooks Function({bool memeTagsRefs})
+      PrefetchHooks Function({bool memeTagsRefs, bool stickerPackItemsRefs})
     >;
 typedef $$TagsTableCreateCompanionBuilder =
     TagsCompanion Function({
@@ -2379,6 +3187,710 @@ typedef $$MemeTagsTableProcessedTableManager =
       MemeTagRow,
       PrefetchHooks Function({bool memeId, bool tagId})
     >;
+typedef $$StickerPacksTableCreateCompanionBuilder =
+    StickerPacksCompanion Function({
+      required String id,
+      required String name,
+      required String publisher,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$StickerPacksTableUpdateCompanionBuilder =
+    StickerPacksCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> publisher,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$StickerPacksTableReferences
+    extends BaseReferences<_$AppDatabase, $StickerPacksTable, StickerPackRow> {
+  $$StickerPacksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$StickerPackItemsTable, List<StickerPackItemRow>>
+  _stickerPackItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.stickerPackItems,
+    aliasName: 'sticker_packs__id__sticker_pack_items__pack_id',
+  );
+
+  $$StickerPackItemsTableProcessedTableManager get stickerPackItemsRefs {
+    final manager = $$StickerPackItemsTableTableManager(
+      $_db,
+      $_db.stickerPackItems,
+    ).filter((f) => f.packId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _stickerPackItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$StickerPacksTableFilterComposer
+    extends Composer<_$AppDatabase, $StickerPacksTable> {
+  $$StickerPacksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get publisher => $composableBuilder(
+    column: $table.publisher,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> stickerPackItemsRefs(
+    Expression<bool> Function($$StickerPackItemsTableFilterComposer f) f,
+  ) {
+    final $$StickerPackItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.stickerPackItems,
+      getReferencedColumn: (t) => t.packId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPackItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.stickerPackItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$StickerPacksTableOrderingComposer
+    extends Composer<_$AppDatabase, $StickerPacksTable> {
+  $$StickerPacksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get publisher => $composableBuilder(
+    column: $table.publisher,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StickerPacksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StickerPacksTable> {
+  $$StickerPacksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get publisher =>
+      $composableBuilder(column: $table.publisher, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> stickerPackItemsRefs<T extends Object>(
+    Expression<T> Function($$StickerPackItemsTableAnnotationComposer a) f,
+  ) {
+    final $$StickerPackItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.stickerPackItems,
+      getReferencedColumn: (t) => t.packId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPackItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.stickerPackItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$StickerPacksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StickerPacksTable,
+          StickerPackRow,
+          $$StickerPacksTableFilterComposer,
+          $$StickerPacksTableOrderingComposer,
+          $$StickerPacksTableAnnotationComposer,
+          $$StickerPacksTableCreateCompanionBuilder,
+          $$StickerPacksTableUpdateCompanionBuilder,
+          (StickerPackRow, $$StickerPacksTableReferences),
+          StickerPackRow,
+          PrefetchHooks Function({bool stickerPackItemsRefs})
+        > {
+  $$StickerPacksTableTableManager(_$AppDatabase db, $StickerPacksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StickerPacksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StickerPacksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StickerPacksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> publisher = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StickerPacksCompanion(
+                id: id,
+                name: name,
+                publisher: publisher,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String publisher,
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => StickerPacksCompanion.insert(
+                id: id,
+                name: name,
+                publisher: publisher,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$StickerPacksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({stickerPackItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (stickerPackItemsRefs) db.stickerPackItems,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (stickerPackItemsRefs)
+                    await $_getPrefetchedData<
+                      StickerPackRow,
+                      $StickerPacksTable,
+                      StickerPackItemRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$StickerPacksTableReferences
+                          ._stickerPackItemsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$StickerPacksTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).stickerPackItemsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.packId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$StickerPacksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StickerPacksTable,
+      StickerPackRow,
+      $$StickerPacksTableFilterComposer,
+      $$StickerPacksTableOrderingComposer,
+      $$StickerPacksTableAnnotationComposer,
+      $$StickerPacksTableCreateCompanionBuilder,
+      $$StickerPacksTableUpdateCompanionBuilder,
+      (StickerPackRow, $$StickerPacksTableReferences),
+      StickerPackRow,
+      PrefetchHooks Function({bool stickerPackItemsRefs})
+    >;
+typedef $$StickerPackItemsTableCreateCompanionBuilder =
+    StickerPackItemsCompanion Function({
+      required String packId,
+      required String memeId,
+      required int position,
+      Value<String?> emojis,
+      Value<int> rowid,
+    });
+typedef $$StickerPackItemsTableUpdateCompanionBuilder =
+    StickerPackItemsCompanion Function({
+      Value<String> packId,
+      Value<String> memeId,
+      Value<int> position,
+      Value<String?> emojis,
+      Value<int> rowid,
+    });
+
+final class $$StickerPackItemsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $StickerPackItemsTable,
+          StickerPackItemRow
+        > {
+  $$StickerPackItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $StickerPacksTable _packIdTable(_$AppDatabase db) => db.stickerPacks
+      .createAlias('sticker_pack_items__pack_id__sticker_packs__id');
+
+  $$StickerPacksTableProcessedTableManager get packId {
+    final $_column = $_itemColumn<String>('pack_id')!;
+
+    final manager = $$StickerPacksTableTableManager(
+      $_db,
+      $_db.stickerPacks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_packIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $MemesTable _memeIdTable(_$AppDatabase db) =>
+      db.memes.createAlias('sticker_pack_items__meme_id__memes__id');
+
+  $$MemesTableProcessedTableManager get memeId {
+    final $_column = $_itemColumn<String>('meme_id')!;
+
+    final manager = $$MemesTableTableManager(
+      $_db,
+      $_db.memes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$StickerPackItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $StickerPackItemsTable> {
+  $$StickerPackItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get emojis => $composableBuilder(
+    column: $table.emojis,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$StickerPacksTableFilterComposer get packId {
+    final $$StickerPacksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.packId,
+      referencedTable: $db.stickerPacks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPacksTableFilterComposer(
+            $db: $db,
+            $table: $db.stickerPacks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MemesTableFilterComposer get memeId {
+    final $$MemesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memeId,
+      referencedTable: $db.memes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemesTableFilterComposer(
+            $db: $db,
+            $table: $db.memes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StickerPackItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $StickerPackItemsTable> {
+  $$StickerPackItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get emojis => $composableBuilder(
+    column: $table.emojis,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$StickerPacksTableOrderingComposer get packId {
+    final $$StickerPacksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.packId,
+      referencedTable: $db.stickerPacks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPacksTableOrderingComposer(
+            $db: $db,
+            $table: $db.stickerPacks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MemesTableOrderingComposer get memeId {
+    final $$MemesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memeId,
+      referencedTable: $db.memes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemesTableOrderingComposer(
+            $db: $db,
+            $table: $db.memes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StickerPackItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StickerPackItemsTable> {
+  $$StickerPackItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get emojis =>
+      $composableBuilder(column: $table.emojis, builder: (column) => column);
+
+  $$StickerPacksTableAnnotationComposer get packId {
+    final $$StickerPacksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.packId,
+      referencedTable: $db.stickerPacks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StickerPacksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.stickerPacks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MemesTableAnnotationComposer get memeId {
+    final $$MemesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memeId,
+      referencedTable: $db.memes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.memes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StickerPackItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StickerPackItemsTable,
+          StickerPackItemRow,
+          $$StickerPackItemsTableFilterComposer,
+          $$StickerPackItemsTableOrderingComposer,
+          $$StickerPackItemsTableAnnotationComposer,
+          $$StickerPackItemsTableCreateCompanionBuilder,
+          $$StickerPackItemsTableUpdateCompanionBuilder,
+          (StickerPackItemRow, $$StickerPackItemsTableReferences),
+          StickerPackItemRow,
+          PrefetchHooks Function({bool packId, bool memeId})
+        > {
+  $$StickerPackItemsTableTableManager(
+    _$AppDatabase db,
+    $StickerPackItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StickerPackItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StickerPackItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StickerPackItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> packId = const Value.absent(),
+                Value<String> memeId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String?> emojis = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StickerPackItemsCompanion(
+                packId: packId,
+                memeId: memeId,
+                position: position,
+                emojis: emojis,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String packId,
+                required String memeId,
+                required int position,
+                Value<String?> emojis = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StickerPackItemsCompanion.insert(
+                packId: packId,
+                memeId: memeId,
+                position: position,
+                emojis: emojis,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$StickerPackItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({packId = false, memeId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (packId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.packId,
+                                referencedTable:
+                                    $$StickerPackItemsTableReferences
+                                        ._packIdTable(db),
+                                referencedColumn:
+                                    $$StickerPackItemsTableReferences
+                                        ._packIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (memeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.memeId,
+                                referencedTable:
+                                    $$StickerPackItemsTableReferences
+                                        ._memeIdTable(db),
+                                referencedColumn:
+                                    $$StickerPackItemsTableReferences
+                                        ._memeIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$StickerPackItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StickerPackItemsTable,
+      StickerPackItemRow,
+      $$StickerPackItemsTableFilterComposer,
+      $$StickerPackItemsTableOrderingComposer,
+      $$StickerPackItemsTableAnnotationComposer,
+      $$StickerPackItemsTableCreateCompanionBuilder,
+      $$StickerPackItemsTableUpdateCompanionBuilder,
+      (StickerPackItemRow, $$StickerPackItemsTableReferences),
+      StickerPackItemRow,
+      PrefetchHooks Function({bool packId, bool memeId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2388,4 +3900,8 @@ class $AppDatabaseManager {
   $$TagsTableTableManager get tags => $$TagsTableTableManager(_db, _db.tags);
   $$MemeTagsTableTableManager get memeTags =>
       $$MemeTagsTableTableManager(_db, _db.memeTags);
+  $$StickerPacksTableTableManager get stickerPacks =>
+      $$StickerPacksTableTableManager(_db, _db.stickerPacks);
+  $$StickerPackItemsTableTableManager get stickerPackItems =>
+      $$StickerPackItemsTableTableManager(_db, _db.stickerPackItems);
 }
