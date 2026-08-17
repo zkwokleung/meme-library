@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -18,6 +19,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.util.UUID
 
 class MainActivity : FlutterActivity() {
@@ -31,11 +33,17 @@ class MainActivity : FlutterActivity() {
 
         /** Mirrors ImageValidator.defaultMaxPixels on the Dart side. */
         private const val MAX_IMPORT_PIXELS = 50L * 1000 * 1000
+
+        private const val ADD_STICKER_PACK_REQUEST = 5471
+        private val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
     }
 
     /** Shares received before the Dart side asked for them (cold start). */
     private val pendingShares = mutableListOf<Map<String, Any?>>()
     private var eventSink: EventChannel.EventSink? = null
+
+    /** At most one ENABLE_STICKER_PACK round trip is in flight at a time. */
+    private var pendingStickerResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +103,38 @@ class MainActivity : FlutterActivity() {
                                 result.success(bytes?.let { mapOf("bytes" to it) })
                             }
                         }.start()
+                    }
+                }
+                "stickers.getExportDirectory" -> {
+                    result.success(
+                        File(filesDir, "sticker_packs").apply { mkdirs() }.absolutePath
+                    )
+                }
+                "stickers.encodeWebp" -> {
+                    val rgba = call.argument<ByteArray>("rgba")
+                    val width = call.argument<Int>("width")
+                    val height = call.argument<Int>("height")
+                    val maxBytes = call.argument<Int>("maxBytes")
+                    if (rgba == null || width == null || height == null || maxBytes == null ||
+                        width <= 0 || height <= 0 || rgba.size != width * height * 4
+                    ) {
+                        result.success(null)
+                    } else {
+                        Thread {
+                            val bytes = encodeWebp(rgba, width, height, maxBytes)
+                            runOnUiThread {
+                                result.success(bytes?.let { mapOf("bytes" to it) })
+                            }
+                        }.start()
+                    }
+                }
+                "stickers.enableStickerPack" -> {
+                    val identifier = call.argument<String>("identifier")
+                    val name = call.argument<String>("name")
+                    if (identifier == null || name == null) {
+                        result.success("failed")
+                    } else {
+                        enableStickerPack(identifier, name, result)
                     }
                 }
                 else -> result.notImplemented()
@@ -333,6 +373,82 @@ class MainActivity : FlutterActivity() {
             Log.w(TAG, "openUrl failed", e)
             false
         }
+    }
+
+    /**
+     * Encodes raw RGBA pixels as lossy WebP, walking quality down until the
+     * output fits [maxBytes]; null when even the lowest step is too large.
+     */
+    private fun encodeWebp(rgba: ByteArray, width: Int, height: Int, maxBytes: Int): ByteArray? {
+        return try {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(rgba))
+            var encoded: ByteArray? = null
+            for (quality in intArrayOf(95, 80, 65, 50, 35, 20)) {
+                val out = ByteArrayOutputStream()
+                if (!bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, out)) break
+                if (out.size() in 1..maxBytes) {
+                    encoded = out.toByteArray()
+                    break
+                }
+            }
+            bitmap.recycle()
+            encoded
+        } catch (e: Exception) {
+            // Never log image content; the failure alone is enough.
+            Log.w(TAG, "encodeWebp failed", e)
+            null
+        }
+    }
+
+    /**
+     * Asks WhatsApp to import a pack the sticker ContentProvider already
+     * serves. The result arrives through onActivityResult, so the channel
+     * result is parked until then.
+     */
+    private fun enableStickerPack(identifier: String, name: String, result: MethodChannel.Result) {
+        if (pendingStickerResult != null) {
+            result.success("failed")
+            return
+        }
+        val installed = WHATSAPP_PACKAGES.any { pkg ->
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                true
+            } catch (e: PackageManager.NameNotFoundException) {
+                false
+            }
+        }
+        if (!installed) {
+            result.success("whatsappNotInstalled")
+            return
+        }
+        try {
+            val intent = Intent("com.whatsapp.intent.action.ENABLE_STICKER_PACK").apply {
+                putExtra("sticker_pack_id", identifier)
+                putExtra("sticker_pack_authority", "$packageName.stickercontentprovider")
+                putExtra("sticker_pack_name", name)
+            }
+            pendingStickerResult = result
+            startActivityForResult(intent, ADD_STICKER_PACK_REQUEST)
+        } catch (e: Exception) {
+            Log.w(TAG, "enableStickerPack failed", e)
+            pendingStickerResult = null
+            result.success("failed")
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != ADD_STICKER_PACK_REQUEST) return
+        val pending = pendingStickerResult ?: return
+        pendingStickerResult = null
+        if (resultCode != RESULT_OK) {
+            data?.getStringExtra("validation_error")?.let {
+                Log.w(TAG, "Sticker pack rejected: $it")
+            }
+        }
+        pending.success(if (resultCode == RESULT_OK) "added" else "cancelled")
     }
 
     /**

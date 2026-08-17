@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/services/platform/channel_platform_services.dart';
 import 'package:meme_library/src/services/platform/clipboard_service.dart';
+import 'package:meme_library/src/services/platform/sticker_pack_installer.dart';
 import 'package:meme_library/src/services/platform/update_installer.dart';
 
 void main() {
@@ -227,6 +228,192 @@ void main() {
       expect(
         await const ChannelUpdateInstaller().openUrl('https://example.com'),
         isFalse,
+      );
+    });
+  });
+
+  group('ChannelStickerPackInstaller', () {
+    test('encodeWebp forwards pixels and returns the encoded bytes', () async {
+      final rgba = Uint8List.fromList(List.filled(16, 128));
+      final webp = Uint8List.fromList([82, 73, 70, 70]);
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'stickers.encodeWebp');
+        final args = call.arguments as Map;
+        expect(args['rgba'], rgba);
+        expect(args['width'], 2);
+        expect(args['height'], 2);
+        expect(args['maxBytes'], 102400);
+        return {'bytes': webp};
+      });
+
+      final result = await const ChannelStickerPackInstaller().encodeWebp(
+        rgba,
+        width: 2,
+        height: 2,
+        maxBytes: 102400,
+      );
+      expect(result, webp);
+    });
+
+    test('encodeWebp reads misses and errors as null', () async {
+      for (final payload in <Object?>[
+        null,
+        <String, Object?>{},
+        {'bytes': Uint8List(0)},
+      ]) {
+        messenger.setMockMethodCallHandler(
+          platformChannel,
+          (call) async => payload,
+        );
+        expect(
+          await const ChannelStickerPackInstaller().encodeWebp(
+            Uint8List(4),
+            width: 1,
+            height: 1,
+            maxBytes: 100,
+          ),
+          isNull,
+          reason: '$payload',
+        );
+      }
+
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw PlatformException(code: 'boom'),
+      );
+      expect(
+        await const ChannelStickerPackInstaller().encodeWebp(
+          Uint8List(4),
+          width: 1,
+          height: 1,
+          maxBytes: 100,
+        ),
+        isNull,
+      );
+    });
+
+    test('exportDirectoryPath returns the native path or null', () async {
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'stickers.getExportDirectory');
+        return '/data/files/sticker_packs';
+      });
+      expect(
+        await const ChannelStickerPackInstaller().exportDirectoryPath(),
+        '/data/files/sticker_packs',
+      );
+
+      for (final payload in <Object?>[null, '']) {
+        messenger.setMockMethodCallHandler(
+          platformChannel,
+          (call) async => payload,
+        );
+        expect(
+          await const ChannelStickerPackInstaller().exportDirectoryPath(),
+          isNull,
+          reason: '$payload',
+        );
+      }
+
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw MissingPluginException(),
+      );
+      expect(
+        await const ChannelStickerPackInstaller().exportDirectoryPath(),
+        isNull,
+      );
+    });
+
+    test('enableStickerPack forwards the pack and maps the result', () async {
+      const results = {
+        'added': InstallStickerPackResult.added,
+        'cancelled': InstallStickerPackResult.cancelled,
+        'whatsappNotInstalled': InstallStickerPackResult.whatsappNotInstalled,
+        'failed': InstallStickerPackResult.failed,
+        'garbage': InstallStickerPackResult.failed,
+        null: InstallStickerPackResult.failed,
+      };
+      for (final entry in results.entries) {
+        messenger.setMockMethodCallHandler(platformChannel, (call) async {
+          expect(call.method, 'stickers.enableStickerPack');
+          final args = call.arguments as Map;
+          expect(args['identifier'], 'pack-1');
+          expect(args['name'], 'Reactions');
+          return entry.key;
+        });
+        expect(
+          await const ChannelStickerPackInstaller().enableStickerPack(
+            identifier: 'pack-1',
+            name: 'Reactions',
+          ),
+          entry.value,
+          reason: '${entry.key}',
+        );
+      }
+    });
+
+    test('enableStickerPack reads as failed where unimplemented', () async {
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw MissingPluginException(),
+      );
+      expect(
+        await const ChannelStickerPackInstaller().enableStickerPack(
+          identifier: 'pack-1',
+          name: 'Reactions',
+        ),
+        InstallStickerPackResult.failed,
+      );
+    });
+
+    test('sendToWhatsApp serializes the payload and maps results', () async {
+      final tray = Uint8List.fromList([1, 2]);
+      final webp = Uint8List.fromList([3, 4]);
+      late Map<Object?, Object?> sent;
+      messenger.setMockMethodCallHandler(platformChannel, (call) async {
+        expect(call.method, 'stickers.sendToWhatsApp');
+        sent = call.arguments as Map<Object?, Object?>;
+        return 'started';
+      });
+
+      final result = await const ChannelStickerPackInstaller().sendToWhatsApp(
+        StickerPackPayload(
+          identifier: 'pack-1',
+          name: 'Reactions',
+          publisher: 'Meme Library',
+          trayPng: tray,
+          stickers: [
+            PayloadSticker(webp: webp, emojis: const ['😀']),
+            PayloadSticker(webp: webp),
+          ],
+        ),
+      );
+      expect(result, InstallStickerPackResult.started);
+      expect(sent['identifier'], 'pack-1');
+      expect(sent['name'], 'Reactions');
+      expect(sent['publisher'], 'Meme Library');
+      expect(sent['trayPng'], tray);
+      final stickers = sent['stickers'] as List<Object?>;
+      expect(stickers, hasLength(2));
+      expect((stickers.first! as Map)['webp'], webp);
+      expect((stickers.first! as Map)['emojis'], ['😀']);
+      expect((stickers.last! as Map)['emojis'], isEmpty);
+
+      messenger.setMockMethodCallHandler(
+        platformChannel,
+        (call) async => throw PlatformException(code: 'boom'),
+      );
+      expect(
+        await const ChannelStickerPackInstaller().sendToWhatsApp(
+          StickerPackPayload(
+            identifier: 'pack-1',
+            name: 'Reactions',
+            publisher: 'Meme Library',
+            trayPng: tray,
+            stickers: const [],
+          ),
+        ),
+        InstallStickerPackResult.failed,
       );
     });
   });

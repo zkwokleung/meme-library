@@ -53,6 +53,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"/>
         </provider>
+        <!-- Serves sticker packs to WhatsApp. Exported, but readable only
+             by apps holding WhatsApp's own signature permission. -->
+        <provider
+            android:name=".StickerContentProvider"
+            android:authorities="${applicationId}.stickercontentprovider"
+            android:enabled="true"
+            android:exported="true"
+            android:readPermission="com.whatsapp.sticker.READ"/>
         <!-- image_picker_android merges in a Google Play services stub that
              triggers installing the backported photo picker module. minSdk
              is 35, where ACTION_PICK_IMAGES is always present, so the stub
@@ -76,5 +84,10 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Sticker packs are handed to WhatsApp (consumer and Business)
+             via ENABLE_STICKER_PACK; without visibility the install check
+             and the intent both silently fail. -->
+        <package android:name="com.whatsapp"/>
+        <package android:name="com.whatsapp.w4b"/>
     </queries>
 </manifest>

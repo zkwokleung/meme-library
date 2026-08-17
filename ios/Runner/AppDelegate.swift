@@ -4,6 +4,7 @@ import Photos
 import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
+import libwebp
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -91,9 +92,106 @@ public class PlatformChannels: NSObject, FlutterPlugin, FlutterStreamHandler {
         let payload = Self.transcodeToJpeg(path: path)
         DispatchQueue.main.async { result(payload) }
       }
+    case "stickers.encodeWebp":
+      guard let args = call.arguments as? [String: Any],
+            let rgba = args["rgba"] as? FlutterStandardTypedData,
+            let width = args["width"] as? Int,
+            let height = args["height"] as? Int,
+            let maxBytes = args["maxBytes"] as? Int else {
+        result(nil)
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async {
+        let encoded = Self.encodeWebp(
+          rgba: rgba.data, width: width, height: height, maxBytes: maxBytes)
+        DispatchQueue.main.async {
+          result(encoded.map { ["bytes": FlutterStandardTypedData(bytes: $0)] })
+        }
+      }
+    case "stickers.sendToWhatsApp":
+      guard let args = call.arguments as? [String: Any],
+            let identifier = args["identifier"] as? String,
+            let name = args["name"] as? String,
+            let publisher = args["publisher"] as? String,
+            let trayPng = args["trayPng"] as? FlutterStandardTypedData,
+            let stickers = args["stickers"] as? [[String: Any]] else {
+        result("failed")
+        return
+      }
+      sendToWhatsApp(
+        identifier: identifier, name: name, publisher: publisher,
+        trayPng: trayPng.data, stickers: stickers, result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  // MARK: - WhatsApp stickers
+
+  /// Encodes raw RGBA pixels as lossy WebP, walking quality down until the
+  /// output fits [maxBytes]; nil when even the lowest step is too large.
+  /// Mirrors the Bitmap.compress quality loop on the Android side.
+  static func encodeWebp(rgba: Data, width: Int, height: Int, maxBytes: Int) -> Data? {
+    guard width > 0, height > 0, rgba.count == width * height * 4 else { return nil }
+    for quality: Float in [95, 80, 65, 50, 35, 20] {
+      var output: UnsafeMutablePointer<UInt8>?
+      let size = rgba.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Int in
+        guard let base = buffer.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+        return WebPEncodeRGBA(
+          base, Int32(width), Int32(height), Int32(width * 4), quality, &output)
+      }
+      defer { WebPFree(output) }
+      guard size > 0, let output else { return nil }
+      if size <= maxBytes {
+        return Data(bytes: output, count: size)
+      }
+    }
+    return nil
+  }
+
+  /// Places the pack on the pasteboard in WhatsApp's third-party sticker
+  /// format (JSON with base64 image data, matching the WAStickersThirdParty
+  /// reference app) and opens WhatsApp.
+  private func sendToWhatsApp(
+    identifier: String, name: String, publisher: String,
+    trayPng: Data, stickers: [[String: Any]], result: @escaping FlutterResult
+  ) {
+    guard let url = URL(string: "whatsapp://stickerPack") else {
+      result("failed")
+      return
+    }
+    guard UIApplication.shared.canOpenURL(url) else {
+      result("whatsappNotInstalled")
+      return
+    }
+
+    var json: [String: Any] = [
+      "identifier": identifier,
+      "name": name,
+      "publisher": publisher,
+      "tray_image": trayPng.base64EncodedString(),
+      "app_store_link": "",
+      "android_play_store_link": "",
+    ]
+    json["stickers"] = stickers.compactMap { sticker -> [String: Any]? in
+      guard let webp = sticker["webp"] as? FlutterStandardTypedData else { return nil }
+      return [
+        "image_data": webp.data.base64EncodedString(),
+        "emojis": sticker["emojis"] as? [String] ?? [],
+      ]
+    }
+
+    guard let data = try? JSONSerialization.data(withJSONObject: json) else {
+      result("failed")
+      return
+    }
+    UIPasteboard.general.setItems(
+      [["net.whatsapp.third-party.sticker-pack": data]],
+      options: [
+        .localOnly: true,
+        .expirationDate: Date().addingTimeInterval(60),
+      ])
+    UIApplication.shared.open(url) { ok in result(ok ? "started" : "failed") }
   }
 
   // MARK: - Gallery picker

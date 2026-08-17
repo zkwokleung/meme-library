@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'clipboard_service.dart';
 import 'gallery_picker.dart';
 import 'incoming_share_service.dart';
+import 'sticker_pack_installer.dart';
 import 'update_installer.dart';
 
 /// Method channel shared by the platform service implementations.
@@ -159,6 +160,105 @@ class ChannelUpdateInstaller implements UpdateInstaller {
       return false;
     }
   }
+}
+
+/// WhatsApp sticker export backed by native code: `Bitmap.compress` and the
+/// ENABLE_STICKER_PACK intent on Android, libwebp and the pasteboard
+/// handoff on iOS. Every call can fail for reasons outside the app
+/// (WhatsApp missing, user cancels), so results degrade to sentinels.
+class ChannelStickerPackInstaller implements StickerPackInstaller {
+  const ChannelStickerPackInstaller([this._channel = platformChannel]);
+
+  final MethodChannel _channel;
+
+  @override
+  Future<Uint8List?> encodeWebp(
+    Uint8List rgba, {
+    required int width,
+    required int height,
+    required int maxBytes,
+  }) async {
+    try {
+      final result = await _channel.invokeMapMethod<String, Object?>(
+        'stickers.encodeWebp',
+        {'rgba': rgba, 'width': width, 'height': height, 'maxBytes': maxBytes},
+      );
+      final bytes = result?['bytes'];
+      if (bytes is! Uint8List || bytes.isEmpty) return null;
+      return bytes;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> exportDirectoryPath() async {
+    try {
+      final path = await _channel.invokeMethod<String>(
+        'stickers.getExportDirectory',
+      );
+      return (path == null || path.isEmpty) ? null : path;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  @override
+  Future<InstallStickerPackResult> enableStickerPack({
+    required String identifier,
+    required String name,
+  }) async {
+    try {
+      final result = await _channel.invokeMethod<String>(
+        'stickers.enableStickerPack',
+        {'identifier': identifier, 'name': name},
+      );
+      return _parseInstallResult(result);
+    } on PlatformException {
+      return InstallStickerPackResult.failed;
+    } on MissingPluginException {
+      return InstallStickerPackResult.failed;
+    }
+  }
+
+  @override
+  Future<InstallStickerPackResult> sendToWhatsApp(
+    StickerPackPayload payload,
+  ) async {
+    try {
+      final result = await _channel.invokeMethod<String>(
+        'stickers.sendToWhatsApp',
+        {
+          'identifier': payload.identifier,
+          'name': payload.name,
+          'publisher': payload.publisher,
+          'trayPng': payload.trayPng,
+          'stickers': [
+            for (final sticker in payload.stickers)
+              {'webp': sticker.webp, 'emojis': sticker.emojis},
+          ],
+        },
+      );
+      return _parseInstallResult(result);
+    } on PlatformException {
+      return InstallStickerPackResult.failed;
+    } on MissingPluginException {
+      return InstallStickerPackResult.failed;
+    }
+  }
+
+  static InstallStickerPackResult _parseInstallResult(String? result) =>
+      switch (result) {
+        'added' => InstallStickerPackResult.added,
+        'started' => InstallStickerPackResult.started,
+        'cancelled' => InstallStickerPackResult.cancelled,
+        'whatsappNotInstalled' => InstallStickerPackResult.whatsappNotInstalled,
+        _ => InstallStickerPackResult.failed,
+      };
 }
 
 /// HEIC/HEIF conversion backed by native code: `ImageIO` on iOS and

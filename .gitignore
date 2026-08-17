@@ -16,6 +16,6 @@ key.properties
 android/.gradle/
 ios/Flutter/ephemeral/
 ios/Pods/
-# The repo tracks no CocoaPods state; `flutter build ios` regenerates it.
-ios/Podfile
+# The Podfile is tracked because it pins the libwebp pod (WhatsApp sticker
+# encoding); generated pod state stays out.
 ios/Podfile.lock
