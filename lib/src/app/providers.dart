@@ -6,11 +6,13 @@ import '../backup/backup_service.dart';
 import '../data/image_pipeline.dart';
 import '../data/library_repository.dart';
 import '../data/media_store.dart';
+import '../data/sticker_pack_repository.dart';
 import '../import/import_coordinator.dart';
 import '../import/source_import_services.dart';
 import '../import/url_import_service.dart';
 import '../services/platform/backup_file_picker.dart';
 import '../services/providers.dart';
+import '../stickers/whatsapp_sticker_exporter.dart';
 import '../update/app_update_service.dart';
 
 /// Infrastructure singletons created during bootstrap and injected via
@@ -22,6 +24,12 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
 
 final mediaStoreProvider = Provider<MediaStore>(
   (ref) => throw UnimplementedError('mediaStoreProvider must be overridden'),
+);
+
+final stickerPackRepositoryProvider = Provider<StickerPackRepository>(
+  (ref) => throw UnimplementedError(
+    'stickerPackRepositoryProvider must be overridden',
+  ),
 );
 
 /// Keeps image decoding, resizing, and hashing off the UI isolate. Tests
@@ -59,6 +67,15 @@ final galleryImportServiceProvider = Provider<GalleryImportService>(
   (ref) => GalleryImportService(
     ref.watch(importCoordinatorProvider),
     ref.watch(heicTranscoderProvider),
+  ),
+);
+
+final whatsAppStickerExporterProvider = Provider<WhatsAppStickerExporter>(
+  (ref) => WhatsAppStickerExporter(
+    packs: ref.watch(stickerPackRepositoryProvider),
+    mediaStore: ref.watch(mediaStoreProvider),
+    pipeline: ref.watch(imagePipelineProvider),
+    installer: ref.watch(stickerPackInstallerProvider),
   ),
 );
 

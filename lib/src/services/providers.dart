@@ -5,6 +5,7 @@ import 'platform/clipboard_service.dart';
 import 'platform/gallery_picker.dart';
 import 'platform/incoming_share_service.dart';
 import 'platform/share_service.dart';
+import 'platform/sticker_pack_installer.dart';
 import 'platform/update_installer.dart';
 
 /// Providers for platform service boundaries.
@@ -41,4 +42,9 @@ final heicTranscoderProvider = Provider<HeicTranscoder>(
 /// Needs no bootstrap wiring, so the real implementation is the default.
 final updateInstallerProvider = Provider<UpdateInstaller>(
   (ref) => const ChannelUpdateInstaller(),
+);
+
+/// Needs no bootstrap wiring, so the real implementation is the default.
+final stickerPackInstallerProvider = Provider<StickerPackInstaller>(
+  (ref) => const ChannelStickerPackInstaller(),
 );

@@ -9,6 +9,7 @@ import 'package:meme_library/src/data/database/app_database.dart';
 import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/data/library_repository.dart';
 import 'package:meme_library/src/data/media_store.dart';
+import 'package:meme_library/src/data/sticker_pack_repository.dart';
 import 'package:meme_library/src/domain/meme.dart';
 import 'package:meme_library/src/features/library/library_controller.dart';
 import 'package:meme_library/src/features/library/library_screen.dart';
@@ -17,6 +18,7 @@ import 'package:meme_library/src/services/platform/clipboard_service.dart';
 import 'package:meme_library/src/services/platform/gallery_picker.dart';
 import 'package:meme_library/src/services/platform/incoming_share_service.dart';
 import 'package:meme_library/src/services/platform/share_service.dart';
+import 'package:meme_library/src/services/platform/sticker_pack_installer.dart';
 import 'package:meme_library/src/services/platform/update_installer.dart';
 import 'package:meme_library/src/services/providers.dart';
 import 'package:path/path.dart' as p;
@@ -110,6 +112,53 @@ class FakeUpdateInstaller implements UpdateInstaller {
   }
 }
 
+class FakeStickerPackInstaller implements StickerPackInstaller {
+  /// Returned by [encodeWebp]; `null` simulates a sticker no quality
+  /// setting can fit under the size cap.
+  Uint8List? encodedWebp = Uint8List.fromList([0x52, 0x49, 0x46, 0x46]);
+
+  /// Returned by [exportDirectoryPath]; `null` simulates iOS.
+  String? exportDirectory;
+
+  InstallStickerPackResult enableResult = InstallStickerPackResult.added;
+  InstallStickerPackResult sendResult = InstallStickerPackResult.started;
+
+  var encodeCount = 0;
+  final enabledPacks = <({String identifier, String name})>[];
+  final sentPayloads = <StickerPackPayload>[];
+
+  @override
+  Future<Uint8List?> encodeWebp(
+    Uint8List rgba, {
+    required int width,
+    required int height,
+    required int maxBytes,
+  }) async {
+    encodeCount++;
+    return encodedWebp;
+  }
+
+  @override
+  Future<String?> exportDirectoryPath() async => exportDirectory;
+
+  @override
+  Future<InstallStickerPackResult> enableStickerPack({
+    required String identifier,
+    required String name,
+  }) async {
+    enabledPacks.add((identifier: identifier, name: name));
+    return enableResult;
+  }
+
+  @override
+  Future<InstallStickerPackResult> sendToWhatsApp(
+    StickerPackPayload payload,
+  ) async {
+    sentPayloads.add(payload);
+    return sendResult;
+  }
+}
+
 /// Real storage core on temp dirs + fake platform services.
 class TestHarness {
   TestHarness._(
@@ -117,24 +166,28 @@ class TestHarness {
     this.database,
     this.mediaStore,
     this.repository,
+    this.stickerPacks,
     this.clipboard,
     this.share,
     this.incomingShares,
     this.gallery,
     this.heic,
     this.updateInstaller,
+    this.stickerPackInstaller,
   );
 
   final Directory root;
   final AppDatabase database;
   final MediaStore mediaStore;
   final DriftLibraryRepository repository;
+  final DriftStickerPackRepository stickerPacks;
   final FakeClipboardService clipboard;
   final FakeShareService share;
   final FakeIncomingShareService incomingShares;
   final FakeGalleryPicker gallery;
   final FakeHeicTranscoder heic;
   final FakeUpdateInstaller updateInstaller;
+  final FakeStickerPackInstaller stickerPackInstaller;
 
   static Future<TestHarness> create() async {
     final root = await Directory.systemTemp.createTemp('meme_harness');
@@ -147,12 +200,14 @@ class TestHarness {
       database,
       mediaStore,
       repository,
+      DriftStickerPackRepository(database),
       FakeClipboardService(),
       FakeShareService(),
       FakeIncomingShareService(),
       FakeGalleryPicker(),
       FakeHeicTranscoder(),
       FakeUpdateInstaller(),
+      FakeStickerPackInstaller(),
     );
   }
 
@@ -167,6 +222,8 @@ class TestHarness {
     imagePipelineProvider.overrideWithValue(const InlineImagePipeline()),
     mediaStoreProvider.overrideWithValue(mediaStore),
     libraryRepositoryProvider.overrideWithValue(repository),
+    stickerPackRepositoryProvider.overrideWithValue(stickerPacks),
+    stickerPackInstallerProvider.overrideWithValue(stickerPackInstaller),
     clipboardServiceProvider.overrideWithValue(clipboard),
     shareServiceProvider.overrideWithValue(share),
     incomingShareServiceProvider.overrideWithValue(incomingShares),

@@ -12,6 +12,7 @@ import 'src/app/providers.dart';
 import 'src/data/database/app_database.dart';
 import 'src/data/library_repository.dart';
 import 'src/data/media_store.dart';
+import 'src/data/sticker_pack_repository.dart';
 import 'src/services/platform/channel_platform_services.dart';
 import 'src/services/platform/gallery_picker.dart';
 import 'src/services/platform/share_plus_service.dart';
@@ -50,6 +51,9 @@ Future<void> main() async {
         updateWorkDirectoryProvider.overrideWithValue(updateWorkDir),
         mediaStoreProvider.overrideWithValue(mediaStore),
         libraryRepositoryProvider.overrideWithValue(repository),
+        stickerPackRepositoryProvider.overrideWithValue(
+          DriftStickerPackRepository(database),
+        ),
         clipboardServiceProvider.overrideWithValue(
           const ChannelClipboardService(),
         ),
