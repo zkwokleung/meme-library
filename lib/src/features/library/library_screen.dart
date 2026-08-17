@@ -12,6 +12,7 @@ import '../../services/providers.dart';
 import '../detail/meme_detail_screen.dart';
 import '../stickers/pack_chooser_sheet.dart';
 import '../tags/tag_prompt.dart';
+import '../tags/tags_screen.dart';
 import 'library_controller.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -93,6 +94,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 }
 
+const _maxTagChips = 20;
+
+/// Selected tags first, so active filters stay visible and dismissible,
+/// then the most-used remaining tags, capped at [max].
+List<(Tag, int)> topTagStrip(
+  List<(Tag, int)> tags,
+  Set<String> selectedIds, {
+  int max = _maxTagChips,
+}) {
+  final selected = <(Tag, int)>[];
+  final rest = <(Tag, int)>[];
+  for (final entry in tags) {
+    (selectedIds.contains(entry.$1.id) ? selected : rest).add(entry);
+  }
+  rest.sort((a, b) {
+    final byCount = b.$2.compareTo(a.$2);
+    return byCount != 0 ? byCount : a.$1.normalized.compareTo(b.$1.normalized);
+  });
+  return [
+    ...selected,
+    if (selected.length < max) ...rest.take(max - selected.length),
+  ];
+}
+
 class _LibraryBody extends ConsumerWidget {
   const _LibraryBody({
     required this.state,
@@ -110,7 +135,9 @@ class _LibraryBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tags = ref.watch(tagsProvider).value ?? const [];
+    final allTags = ref.watch(tagsProvider).value ?? const [];
+    final tags = topTagStrip(allTags, state.tagIds);
+    final hasHiddenTags = tags.length < allTags.length;
     final showEmptyLibrary =
         state.items.isEmpty && !state.hasFilter && !state.loadingMore;
 
@@ -181,9 +208,17 @@ class _LibraryBody extends ConsumerWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: tags.length,
+                  itemCount: tags.length + (hasHiddenTags ? 1 : 0),
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
+                    if (index == tags.length) {
+                      return ActionChip(
+                        avatar: const Icon(Icons.sell_outlined, size: 18),
+                        label: const Text('All tags'),
+                        tooltip: 'Browse all tags',
+                        onPressed: () => _browseAllTags(context, ref),
+                      );
+                    }
                     final (tag, count) = tags[index];
                     return FilterChip(
                       label: Text(tag.name),
@@ -247,6 +282,24 @@ class _LibraryBody extends ConsumerWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  void _browseAllTags(BuildContext context, WidgetRef ref) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => TagsScreen(
+          onTagSelected: (tag) {
+            // Ensure-selected: tapping an already-filtered tag must not
+            // clear it.
+            final state = ref.read(libraryControllerProvider).value;
+            if (state != null && !state.tagIds.contains(tag.id)) {
+              ref.read(libraryControllerProvider.notifier).toggleTag(tag.id);
+            }
+            Navigator.of(routeContext).pop();
+          },
+        ),
       ),
     );
   }
