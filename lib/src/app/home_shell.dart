@@ -112,8 +112,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               label: 'Stickers',
             ),
             NavigationDestination(
-              icon: Icon(Icons.add_circle_outline),
+              icon: _AddDestinationIcon(),
               label: 'Add',
+              tooltip: 'Add meme',
             ),
             NavigationDestination(
               icon: Icon(Icons.sell_outlined),
@@ -128,6 +129,23 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Filled circle that makes the Add action stand out from the plain
+/// destination icons around it.
+class _AddDestinationIcon extends StatelessWidget {
+  const _AddDestinationIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+      child: Icon(Icons.add_rounded, color: scheme.onPrimary),
     );
   }
 }

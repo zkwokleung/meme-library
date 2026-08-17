@@ -69,13 +69,13 @@ void main() {
     expect(find.text('doge'), findsOneWidget);
   });
 
-  testWidgets('the Add destination opens the sheet without switching tabs', (
+  testWidgets('the add button opens the sheet without switching tabs', (
     tester,
   ) async {
     await tester.pumpWidget(app());
     await settle(tester);
 
-    await tester.tap(destination('Add'));
+    await tester.tap(find.byTooltip('Add meme'));
     await tester.pumpAndSettle();
 
     expect(find.text('Save from photos'), findsOneWidget);
@@ -89,8 +89,7 @@ void main() {
     await tester.pumpWidget(app());
     await settle(tester);
 
-    expect(find.byTooltip('Search'), findsOneWidget);
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
 
     final searchBar = tester.widget<SearchBar>(find.byType(SearchBar));

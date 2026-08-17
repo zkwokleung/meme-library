@@ -41,12 +41,7 @@ void main() {
   }
 
   Future<void> openAddSheet(WidgetTester tester) async {
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('Add'),
-      ),
-    );
+    await tester.tap(find.byTooltip('Add meme'));
     await tester.pumpAndSettle();
   }
 
@@ -399,12 +394,12 @@ void main() {
     await tester.longPress(find.bySemanticsLabel('Meme').first);
     await tester.pumpAndSettle();
     expect(find.text('1 selected'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byTooltip('Search'), findsNothing);
 
     await tester.tap(find.byTooltip('Cancel selection'));
     await tester.pumpAndSettle();
     expect(find.text('Meme Library'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byTooltip('Search'), findsOneWidget);
 
     // Tapping the only selected tile also leaves selection mode.
     await tester.longPress(find.bySemanticsLabel('Meme').first);
