@@ -37,7 +37,7 @@ void main() {
 
     await tester.tap(destination('Stickers'));
     await tester.pumpAndSettle();
-    expect(find.text('Stickers are coming soon'), findsOneWidget);
+    expect(find.text('No sticker packs yet'), findsOneWidget);
 
     await tester.tap(destination('Tags'));
     await tester.pumpAndSettle();
