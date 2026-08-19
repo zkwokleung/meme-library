@@ -53,11 +53,13 @@ class ImagePickerGalleryPicker implements GalleryPicker {
 
   /// Drops the picker's own scratch names.
   ///
-  /// `image_picker` copies each asset to `image_picker_<uuid>.jpg`, which
-  /// is not provenance anyone would search the library for.
+  /// `image_picker` copies unnamed assets to `image_picker_<uuid>.jpg`,
+  /// or plain `image_picker.jpg` when the content provider exposes no
+  /// display name at all. Neither is provenance anyone would search the
+  /// library for.
   static String? meaningfulDisplayName(String? name) {
     if (name == null || name.isEmpty) return null;
-    return name.startsWith('image_picker_') ? null : name;
+    return name.startsWith('image_picker') ? null : name;
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 import '../data/image_validator.dart';
 import '../domain/meme.dart';
@@ -159,12 +160,29 @@ class GalleryImportService {
     return outcomes;
   }
 
-  /// The file name without its extension, or `null` when nothing usable
-  /// remains (so the meme falls back to being untitled).
+  /// Extensions the picker can actually hand us. Only these are stripped:
+  /// iOS suggestedNames arrive extensionless, so an unknown trailing dot
+  /// segment ('Screenshot 2024.11.03') is part of the real name.
+  static const _imageExtensions = {
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.gif',
+    '.heic',
+    '.heif',
+  };
+
+  /// The file name without a known image extension, or `null` when
+  /// nothing usable remains (so the meme falls back to being untitled).
   static String? defaultTitle(String? fileName) {
     if (fileName == null) return null;
-    final dot = fileName.lastIndexOf('.');
-    final base = (dot > 0 ? fileName.substring(0, dot) : fileName).trim();
+    final hasImageExtension = _imageExtensions.contains(
+      p.extension(fileName).toLowerCase(),
+    );
+    final base =
+        (hasImageExtension ? p.basenameWithoutExtension(fileName) : fileName)
+            .trim();
     return base.isEmpty ? null : base;
   }
 

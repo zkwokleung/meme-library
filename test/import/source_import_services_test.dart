@@ -246,12 +246,20 @@ void main() {
       expect(meme.title, isNull);
     });
 
-    test('defaultTitle handles awkward file names', () {
+    test('defaultTitle strips only known image extensions', () {
       expect(GalleryImportService.defaultTitle('a.b.png'), 'a.b');
+      expect(GalleryImportService.defaultTitle('IMG_1234.PNG'), 'IMG_1234');
       expect(GalleryImportService.defaultTitle('noext'), 'noext');
       expect(GalleryImportService.defaultTitle('.hidden'), '.hidden');
       expect(GalleryImportService.defaultTitle(' .png'), isNull);
       expect(GalleryImportService.defaultTitle(null), isNull);
+      // iOS suggestedNames arrive extensionless; real dots must survive.
+      expect(
+        GalleryImportService.defaultTitle('Screenshot 2024.11.03'),
+        'Screenshot 2024.11.03',
+      );
+      expect(GalleryImportService.defaultTitle('meme v1.2'), 'meme v1.2');
+      expect(GalleryImportService.defaultTitle('report.pdf'), 'report.pdf');
     });
 
     test('a missing pick fails without aborting the batch', () async {

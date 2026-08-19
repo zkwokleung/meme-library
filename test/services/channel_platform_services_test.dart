@@ -131,10 +131,16 @@ void main() {
         platformChannel,
         (call) async => [
           {'path': '/tmp/a', 'name': 'image_picker_9f8e7d.jpg'},
+          // image_picker_android's fallback when the content provider
+          // exposes no display name (FileUtils: "image_picker" + ext).
+          {'path': '/tmp/b', 'name': 'image_picker.jpg'},
         ],
       );
       final picked = await const ChannelGalleryPicker().pickImages();
-      expect(picked.single.displayName, isNull);
+      expect(picked, hasLength(2));
+      for (final pick in picked) {
+        expect(pick.displayName, isNull);
+      }
     });
   });
 
