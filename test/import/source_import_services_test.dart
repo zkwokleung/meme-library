@@ -226,6 +226,34 @@ void main() {
       expect(meme.sourceRef, 'IMG_1234.PNG');
     });
 
+    test('defaults the title to the file name without its extension', () async {
+      final picked = await stage(
+        pngBytes(seed: 7),
+        name: 'y.png',
+        displayName: 'Distracted Boyfriend.png',
+      );
+      final outcomes = await service.importPicked([picked]);
+      final meme = (outcomes.single as ImportSuccess).meme;
+
+      expect(meme.title, 'Distracted Boyfriend');
+    });
+
+    test('an unnamed pick stays untitled', () async {
+      final picked = await stage(pngBytes(seed: 8), name: 'z.png');
+      final outcomes = await service.importPicked([picked]);
+      final meme = (outcomes.single as ImportSuccess).meme;
+
+      expect(meme.title, isNull);
+    });
+
+    test('defaultTitle handles awkward file names', () {
+      expect(GalleryImportService.defaultTitle('a.b.png'), 'a.b');
+      expect(GalleryImportService.defaultTitle('noext'), 'noext');
+      expect(GalleryImportService.defaultTitle('.hidden'), '.hidden');
+      expect(GalleryImportService.defaultTitle(' .png'), isNull);
+      expect(GalleryImportService.defaultTitle(null), isNull);
+    });
+
     test('a missing pick fails without aborting the batch', () async {
       final outcomes = await service.importPicked([
         const PickedGalleryImage(path: '/nonexistent/gone.png'),

@@ -76,6 +76,7 @@ class ImportCoordinator {
     Uint8List bytes, {
     required MemeSourceKind sourceKind,
     String? sourceRef,
+    String? title,
   }) async {
     final ProbedImage probed;
     try {
@@ -121,6 +122,7 @@ class ImportCoordinator {
       sizeBytes: image.sizeBytes,
       relativePath: stored.relativePath,
       thumbnailPath: stored.thumbnailPath,
+      title: title,
       sourceKind: sourceKind,
       sourceRef: sourceRef,
       createdAt: now,

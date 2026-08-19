@@ -129,6 +129,7 @@ class GalleryImportService {
                   // native UUID a share is staged under, and it feeds the
                   // search index.
                   sourceRef: picked[i].displayName,
+                  title: defaultTitle(picked[i].displayName),
                 ),
         );
       } on FileSystemException {
@@ -156,6 +157,15 @@ class GalleryImportService {
       onProgress?.call(i + 1, picked.length);
     }
     return outcomes;
+  }
+
+  /// The file name without its extension, or `null` when nothing usable
+  /// remains (so the meme falls back to being untitled).
+  static String? defaultTitle(String? fileName) {
+    if (fileName == null) return null;
+    final dot = fileName.lastIndexOf('.');
+    final base = (dot > 0 ? fileName.substring(0, dot) : fileName).trim();
+    return base.isEmpty ? null : base;
   }
 
   static Future<Uint8List> _readHeader(File file) async {
