@@ -7,6 +7,7 @@ import '../../app/providers.dart';
 import '../../domain/sticker_pack.dart';
 import '../../services/platform/sticker_pack_installer.dart';
 import '../../stickers/whatsapp_sticker_exporter.dart';
+import '../../widgets/meme_thumb.dart';
 import 'meme_picker_screen.dart';
 import 'sticker_packs_controller.dart';
 
@@ -36,12 +37,17 @@ class StickerPackScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Add memes',
-        onPressed: pack.items.length >= StickerPack.maxStickers
-            ? null
-            : () => _addMemes(context, ref),
-        child: const Icon(Icons.add_photo_alternate_outlined),
+      // Lifted above the floating dock, whose height arrives as MediaQuery
+      // padding via the root Scaffold's extendBody.
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        child: FloatingActionButton(
+          tooltip: 'Add memes',
+          onPressed: pack.items.length >= StickerPack.maxStickers
+              ? null
+              : () => _addMemes(context, ref),
+          child: const Icon(Icons.add_photo_alternate_outlined),
+        ),
       ),
       body: pack.items.isEmpty
           ? Center(
@@ -52,11 +58,16 @@ class StickerPackScreen extends ConsumerWidget {
               ),
             )
           : GridView.builder(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.fromLTRB(
+                12,
+                12,
+                12,
+                MediaQuery.paddingOf(context).bottom + 12,
+              ),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 120,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
               ),
               itemCount: pack.items.length,
               itemBuilder: (context, index) =>
@@ -139,7 +150,16 @@ class StickerPackScreen extends ConsumerWidget {
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
+        builder: (_) => const Dialog(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ),
       ),
     );
     StickerExportOutcome outcome;
@@ -183,29 +203,24 @@ class _StickerTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final media = ref.watch(mediaStoreProvider);
-    return GestureDetector(
-      onTap: () => _showStickerSheet(context, ref),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.file(
-              media.resolve(item.meme.thumbnailPath),
-              fit: BoxFit.cover,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        MemeThumb(
+          meme: item.meme,
+          borderRadius: 12,
+          onTap: () => _showStickerSheet(context, ref),
+        ),
+        if (item.emojis.isNotEmpty)
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              // The overlay must not steal taps from the tile beneath.
+              child: IgnorePointer(child: Text(item.emojis.join())),
             ),
           ),
-          if (item.emojis.isNotEmpty)
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Text(item.emojis.join()),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 

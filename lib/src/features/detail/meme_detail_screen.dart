@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../domain/meme.dart';
 import '../../domain/tag.dart';
+import '../../widgets/meme_thumb.dart';
 import '../library/library_controller.dart';
 import '../library/library_screen.dart';
 import '../tags/tag_prompt.dart';
@@ -168,7 +169,7 @@ class _MemeDetailScreenState extends ConsumerState<MemeDetailScreen> {
                       maxScale: 6,
                       child: Center(
                         child: Hero(
-                          tag: 'meme-${meme.id}',
+                          tag: memeHeroTag(meme.id),
                           child: Image.file(
                             media.resolve(meme.relativePath),
                             fit: BoxFit.contain,

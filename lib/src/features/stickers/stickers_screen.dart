@@ -14,10 +14,15 @@ class StickersScreen extends ConsumerWidget {
     final packs = ref.watch(stickerPacksControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Stickers')),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'New sticker pack',
-        onPressed: () => _createPack(context, ref),
-        child: const Icon(Icons.add),
+      // Lifted above the floating dock, whose height arrives as MediaQuery
+      // padding via the root Scaffold's extendBody.
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        child: FloatingActionButton(
+          tooltip: 'New sticker pack',
+          onPressed: () => _createPack(context, ref),
+          child: const Icon(Icons.add),
+        ),
       ),
       body: switch (packs) {
         AsyncData(value: final summaries) when summaries.isEmpty =>
@@ -87,7 +92,7 @@ class _PackTile extends ConsumerWidget {
       leading: summary.previewThumbnailPaths.isEmpty
           ? const CircleAvatar(child: Icon(Icons.emoji_emotions_outlined))
           : ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               child: Image.file(
                 media.resolve(summary.previewThumbnailPaths.first),
                 width: 48,

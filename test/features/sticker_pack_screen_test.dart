@@ -127,7 +127,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Add memes'));
-    await pumpUntilFound(tester, find.text('Animated'));
+    await pumpUntilFound(tester, find.text('GIF'));
     await tester.pumpAndSettle();
     expect(find.byType(MemePickerScreen), findsOneWidget);
 

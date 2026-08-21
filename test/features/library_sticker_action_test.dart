@@ -40,6 +40,11 @@ void main() {
       );
     });
 
+    // The masonry grid renders two large columns; a taller viewport keeps
+    // all three tiles built without scrolling.
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(app());
     await pumpUntil(
       tester,

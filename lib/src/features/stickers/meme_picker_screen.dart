@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../domain/meme.dart';
+import '../../widgets/meme_thumb.dart';
 import '../library/library_controller.dart';
 import '../library/meme_pager.dart';
 
@@ -48,11 +48,8 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
     super.dispose();
   }
 
-  bool _isAnimated(Meme meme) => meme.thumbnailPath.endsWith('.gif');
-
   @override
   Widget build(BuildContext context) {
-    final media = ref.watch(mediaStoreProvider);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -73,7 +70,7 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: SearchBar(
               hintText: 'Search memes',
-              leading: const Icon(Icons.search),
+              leading: const Icon(Icons.search_rounded),
               onChanged: _pager.setSearchText,
             ),
           ),
@@ -90,11 +87,16 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
               ),
             )
           : GridView.builder(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.fromLTRB(
+                12,
+                12,
+                12,
+                MediaQuery.paddingOf(context).bottom + 12,
+              ),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 120,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
               ),
               itemCount: _pager.items.length,
               itemBuilder: (context, index) {
@@ -103,54 +105,27 @@ class _MemePickerScreenState extends ConsumerState<MemePickerScreen> {
                   unawaited(_pager.loadMore());
                 }
                 final meme = _pager.items[index];
-                final animated = _isAnimated(meme);
-                final selected = _selected.contains(meme.id);
-                return GestureDetector(
-                  onTap: animated
-                      ? null
-                      : () => setState(() {
-                          if (!_selected.remove(meme.id)) {
-                            _selected.add(meme.id);
-                          }
-                        }),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Opacity(
-                        opacity: animated ? 0.35 : 1,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            media.resolve(meme.thumbnailPath),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      if (animated)
-                        const Center(
-                          child: Chip(
-                            label: Text('Animated'),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      if (selected)
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 3,
-                            ),
-                          ),
-                          alignment: Alignment.topRight,
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.check_circle,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                    ],
-                  ),
+                if (memeIsAnimated(meme)) {
+                  // Not pickable: dimmed, badged, and outside selection.
+                  return Opacity(
+                    opacity: 0.35,
+                    child: MemeThumb(
+                      meme: meme,
+                      borderRadius: 12,
+                      showAnimatedBadge: true,
+                    ),
+                  );
+                }
+                return MemeThumb(
+                  meme: meme,
+                  borderRadius: 12,
+                  selectionMode: true,
+                  selected: _selected.contains(meme.id),
+                  onTap: () => setState(() {
+                    if (!_selected.remove(meme.id)) {
+                      _selected.add(meme.id);
+                    }
+                  }),
                 );
               },
             ),

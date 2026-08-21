@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app/providers.dart';
 import '../../domain/meme.dart';
@@ -9,6 +10,7 @@ import '../../domain/tag.dart';
 import '../../services/platform/clipboard_service.dart';
 import '../../services/platform/share_service.dart';
 import '../../services/providers.dart';
+import '../../widgets/meme_thumb.dart';
 import '../detail/meme_detail_screen.dart';
 import '../stickers/pack_chooser_sheet.dart';
 import '../tags/tag_prompt.dart';
@@ -69,14 +71,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         }
       },
       child: Scaffold(
+        // The Scaffold places the FAB from viewPadding, which ignores the
+        // dock height the root Scaffold injects via extendBody — pad it up
+        // manually so it floats above the dock.
         floatingActionButton: selectionMode
             ? null
-            : FloatingActionButton(
-                onPressed: _focusSearch,
-                tooltip: 'Search',
-                child: const Icon(Icons.search_rounded),
+            : Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.paddingOf(context).bottom,
+                ),
+                child: FloatingActionButton(
+                  onPressed: _focusSearch,
+                  tooltip: 'Search',
+                  child: const Icon(Icons.search_rounded),
+                ),
               ),
+        // bottom: false keeps the dock's MediaQuery padding available to the
+        // grid so content scrolls under the floating dock instead of
+        // stopping above it.
         body: SafeArea(
+          bottom: false,
           child: switch (state) {
             AsyncData(:final value) => _LibraryBody(
               state: value,
@@ -204,7 +218,7 @@ class _LibraryBody extends ConsumerWidget {
           if (tags.isNotEmpty)
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 48,
+                height: 56,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -249,27 +263,39 @@ class _LibraryBody extends ConsumerWidget {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 96),
-              sliver: SliverGrid.builder(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 160,
-                  mainAxisSpacing: 4,
-                  crossAxisSpacing: 4,
-                ),
-                itemCount: state.items.length,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                4,
+                16,
+                MediaQuery.paddingOf(context).bottom + 96,
+              ),
+              sliver: SliverMasonryGrid.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childCount: state.items.length,
                 itemBuilder: (context, index) {
                   final meme = state.items[index];
                   final controller = ref.read(
                     libraryControllerProvider.notifier,
                   );
-                  return _MemeTile(
-                    meme: meme,
-                    selectionMode: state.selectionMode,
-                    selected: state.selectedIds.contains(meme.id),
-                    onTap: state.selectionMode
-                        ? () => controller.toggleSelected(meme.id)
-                        : () => onOpen(meme),
-                    onLongPress: () => controller.toggleSelected(meme.id),
+                  return AspectRatio(
+                    // Natural aspect ratio, clamped so one extreme meme
+                    // can't dominate or collapse a masonry column.
+                    aspectRatio: meme.height == 0
+                        ? 1
+                        : (meme.width / meme.height).clamp(0.55, 2.5),
+                    child: MemeThumb(
+                      meme: meme,
+                      useHero: true,
+                      showAnimatedBadge: memeIsAnimated(meme),
+                      selectionMode: state.selectionMode,
+                      selected: state.selectedIds.contains(meme.id),
+                      onTap: state.selectionMode
+                          ? () => controller.toggleSelected(meme.id)
+                          : () => onOpen(meme),
+                      onLongPress: () => controller.toggleSelected(meme.id),
+                    ),
                   );
                 },
               ),
@@ -518,89 +544,6 @@ class _BulkActionsMenu extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
-  }
-}
-
-class _MemeTile extends ConsumerWidget {
-  const _MemeTile({
-    required this.meme,
-    required this.selectionMode,
-    required this.selected,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final Meme meme;
-  final bool selectionMode;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final media = ref.watch(mediaStoreProvider);
-    final label = meme.title ?? 'Meme';
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Semantics(
-      label: label,
-      button: true,
-      selected: selectionMode ? selected : null,
-      child: Material(
-        clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(12),
-        color: colorScheme.surfaceContainerHighest,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Hero(
-                tag: 'meme-${meme.id}',
-                child: Image.file(
-                  media.resolve(meme.thumbnailPath),
-                  fit: BoxFit.cover,
-                  // Downsamples static thumbnails; a harmless no-op for
-                  // animated GIF thumbnails (the engine ignores the target
-                  // size for multi-frame codecs), which MediaStore already
-                  // bounds to <=400px and <=48 frames.
-                  cacheWidth: 320,
-                  errorBuilder: (_, _, _) =>
-                      const Center(child: Icon(Icons.broken_image_outlined)),
-                ),
-              ),
-              if (selectionMode) ...[
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? colorScheme.primary.withValues(alpha: 0.24)
-                        : Colors.transparent,
-                    border: selected
-                        ? Border.all(color: colorScheme.primary, width: 3)
-                        : null,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                Positioned(
-                  top: 6,
-                  left: 6,
-                  child: Icon(
-                    selected
-                        ? Icons.check_circle_rounded
-                        : Icons.circle_outlined,
-                    color: selected
-                        ? colorScheme.primary
-                        : colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 
