@@ -85,8 +85,8 @@ class _IconPainter extends CustomPainter {
     if (withBackground) {
       final bg = Paint()
         ..shader = ui.Gradient.linear(Offset.zero, Offset(s, s), [
-          const Color(0xFF7C5CFF),
-          const Color(0xFF4A2FD6),
+          const Color(0xFFF0703F),
+          const Color(0xFFC43E14),
         ]);
       canvas.drawRect(Rect.fromLTWH(0, 0, s, s), bg);
     }
@@ -129,21 +129,21 @@ class _IconPainter extends CustomPainter {
     );
 
     // Smiley on the front card.
-    final violet = Paint()..color = const Color(0xFF4A2FD6);
+    final vermilion = Paint()..color = const Color(0xFFC43E14);
     final eyeRadius = front.width * 0.075;
     final eyeY = front.center.dy - front.height * 0.13;
     canvas.drawCircle(
       Offset(front.center.dx - front.width * 0.2, eyeY),
       eyeRadius,
-      violet,
+      vermilion,
     );
     canvas.drawCircle(
       Offset(front.center.dx + front.width * 0.2, eyeY),
       eyeRadius,
-      violet,
+      vermilion,
     );
     final mouth = Paint()
-      ..color = const Color(0xFF4A2FD6)
+      ..color = const Color(0xFFC43E14)
       ..style = PaintingStyle.stroke
       ..strokeWidth = front.width * 0.085
       ..strokeCap = StrokeCap.round;
@@ -179,7 +179,8 @@ class _IconPainter extends CustomPainter {
       }
     }
     sparkle.close();
-    canvas.drawPath(sparkle, Paint()..color = const Color(0xFFFFC93D));
+    // Cream, not amber: amber vanishes against the vermilion field.
+    canvas.drawPath(sparkle, Paint()..color = const Color(0xFFFFF6E8));
   }
 
   @override
