@@ -12,7 +12,7 @@ find the right one in seconds and drop it into any conversation.
 [![CI](https://github.com/zkwokleung/meme-library/actions/workflows/ci.yml/badge.svg)](https://github.com/zkwokleung/meme-library/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zkwokleung/meme-library?include_prereleases)](https://github.com/zkwokleung/meme-library/releases)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41-45D1FD?logo=flutter)
-![Platforms](https://img.shields.io/badge/platforms-iOS%2018%2B%20·%20Android%2015%2B-6246EA)
+![Platforms](https://img.shields.io/badge/platforms-iOS%2018%2B%20·%20Android%2015%2B-E4572E)
 
 <br/>
 
