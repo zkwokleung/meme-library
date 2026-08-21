@@ -288,7 +288,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (_busy)
             Positioned.fill(
               child: ColoredBox(
-                color: const Color(0x66000000),
+                color: theme.colorScheme.scrim.withValues(alpha: 0.6),
                 child: Center(
                   child: _downloadProgress == null
                       ? const CircularProgressIndicator()
@@ -304,6 +304,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             const SizedBox(height: 12),
                             const Text(
                               'Downloading update…',
+                              // Sits on the scrim, not a surface, so it is
+                              // deliberately the same in both brightnesses.
                               style: TextStyle(color: Colors.white),
                             ),
                           ],

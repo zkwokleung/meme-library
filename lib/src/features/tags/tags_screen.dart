@@ -24,7 +24,12 @@ class TagsScreen extends ConsumerWidget {
       body: tags.isEmpty
           ? const Center(child: Text('No tags yet'))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                MediaQuery.paddingOf(context).bottom + 16,
+              ),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
