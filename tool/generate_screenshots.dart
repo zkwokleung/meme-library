@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:meme_library/src/app/app.dart';
+import 'package:meme_library/src/app/theme.dart';
 import 'package:meme_library/src/data/image_pipeline.dart';
 import 'package:meme_library/src/domain/meme.dart' as domain;
 import 'package:meme_library/src/features/detail/meme_detail_screen.dart';
@@ -121,6 +122,18 @@ Future<void> _loadRealFonts() async {
     'roboto-bold.ttf',
   ]);
   await loadFamily('MaterialIcons', ['materialicons-regular.otf']);
+
+  // Bundled display font: loaded from the repo, not the SDK cache.
+  final display = FontLoader(kDisplayFontFamily);
+  for (final path in [
+    'assets/fonts/BricolageGrotesque-SemiBold.ttf',
+    'assets/fonts/BricolageGrotesque-ExtraBold.ttf',
+  ]) {
+    display.addFont(
+      Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+    );
+  }
+  await display.load();
 }
 
 void main() {
@@ -253,12 +266,7 @@ Future<void> _generate(WidgetTester tester) async {
       ProviderScope(
         overrides: harness.overrides,
         child: MaterialApp(
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF6246EA),
-            ),
-            scaffoldBackgroundColor: const Color(0xFFF8F7FC),
-          ),
+          theme: buildTheme(Brightness.light),
           debugShowCheckedModeBanner: false,
           home: MemeDetailScreen(memeId: memes[1].id),
         ),
