@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/app/app.dart';
+import 'package:meme_library/src/app/floating_dock.dart';
 
 import '../helpers/test_harness.dart';
 
@@ -25,7 +26,7 @@ void main() {
   }
 
   Finder destination(String label) => find.descendant(
-    of: find.byType(NavigationBar),
+    of: find.byType(FloatingDock),
     matching: find.text(label),
   );
 
@@ -67,13 +68,13 @@ void main() {
     await tester.tap(find.text('Reactions'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Add memes'), findsOneWidget);
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(FloatingDock), findsOneWidget);
 
     // Back pops the pack screen, not the tab.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byTooltip('New sticker pack'), findsOneWidget);
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(FloatingDock), findsOneWidget);
   });
 
   testWidgets('the emoji sheet blocks the bottom bar', (tester) async {
@@ -102,8 +103,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Save emojis'), findsOneWidget);
-    final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-    expect(bar.selectedIndex, 1);
+    final dock = tester.widget<FloatingDock>(find.byType(FloatingDock));
+    expect(dock.selectedIndex, 1);
 
     await tester.tap(find.text('Save emojis'));
     await tester.pumpAndSettle();
@@ -166,8 +167,8 @@ void main() {
     expect(find.text('Save from photos'), findsOneWidget);
     expect(find.text('Paste image'), findsOneWidget);
     expect(find.text('Save from link'), findsOneWidget);
-    final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-    expect(bar.selectedIndex, 0);
+    final dock = tester.widget<FloatingDock>(find.byType(FloatingDock));
+    expect(dock.selectedIndex, 0);
   });
 
   testWidgets('the search FAB focuses the search bar', (tester) async {

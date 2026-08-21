@@ -9,6 +9,7 @@ import '../features/library/library_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/stickers/stickers_screen.dart';
 import '../features/tags/tags_screen.dart';
+import 'floating_dock.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -99,6 +100,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         setState(() => _pageIndex = 0);
       },
       child: Scaffold(
+        // Tabs paint behind the floating dock so content scrolls under it.
+        extendBody: true,
         // A nested messenger keeps the tab Scaffolds off the root messenger,
         // so snackbars fired inside a tab render once, not per Scaffold.
         body: ScaffoldMessenger(
@@ -121,69 +124,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ],
           ),
         ),
-        bottomNavigationBar: NavigationBar(
+        bottomNavigationBar: FloatingDock(
           selectedIndex: _destinationFor(_pageIndex),
           onDestinationSelected: _onDestinationSelected,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.collections_bookmark_outlined),
-              selectedIcon: Icon(Icons.collections_bookmark),
-              label: 'Library',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.emoji_emotions_outlined),
-              selectedIcon: Icon(Icons.emoji_emotions),
-              label: 'Stickers',
-            ),
-            NavigationDestination(
-              icon: _AddDestinationIcon(),
-              label: '',
-              tooltip: 'Add meme',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.sell_outlined),
-              selectedIcon: Icon(Icons.sell),
-              label: 'Tags',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Filled circle that makes the Add action stand out from the plain
-/// destination icons around it. It keeps the standard 24dp icon footprint
-/// so the bar lays out normally, while painting a larger circle that pokes
-/// just above the bar's top edge.
-class _AddDestinationIcon extends StatelessWidget {
-  const _AddDestinationIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: OverflowBox(
-        maxWidth: 56,
-        maxHeight: 56,
-        child: Transform.translate(
-          offset: const Offset(0, -6),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: scheme.primary,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.add_rounded, color: scheme.onPrimary, size: 28),
-          ),
         ),
       ),
     );

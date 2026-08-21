@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meme_library/src/app/app.dart';
+import 'package:meme_library/src/app/floating_dock.dart';
 
 import '../helpers/test_harness.dart';
 
@@ -50,7 +51,7 @@ void main() {
     await settle(tester);
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
+        of: find.byType(FloatingDock),
         matching: find.text('Settings'),
       ),
     );
